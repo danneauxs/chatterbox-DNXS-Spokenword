@@ -64,6 +64,10 @@ SESSION_STATE.md*
 CLAUDE_CHANGES.log*
 Tree*
 
+# Claude AI Development Files (keep locally but don't publish)
+CLAUDE.md*
+.claude/
+
 # Backup Directories
 Backups/
 ARCHIVED/
