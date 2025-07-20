@@ -20,7 +20,7 @@ if [ -d "hf_space_repo" ]; then
     rm -rf hf_space_repo
 fi
 
-git clone https://huggingface.co/spaces/bobsackett/DNXS-Spokenword
+git clone https://huggingface.co/spaces/$HF_USERNAME/$SPACE_NAME hf_space_repo
 cd hf_space_repo
 
 # Step 3: Copy deployment files
