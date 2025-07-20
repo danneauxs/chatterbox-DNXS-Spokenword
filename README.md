@@ -17,8 +17,8 @@ A comprehensive audiobook production system built on ChatterboxTTS with advanced
 ### 1. Installation
 
 ```bash
-git clone [your-fork-url]
-cd chatterbox-audiobook-pipeline
+git clone https://github.com/danneauxs/chatterbox-DNXS-Spokenword.git
+cd chatterbox-DNXS-Spokenword
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
