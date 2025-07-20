@@ -78,13 +78,26 @@ class AlignmentStreamAnalyzer:
         hook_handle = target_layer.register_forward_hook(attention_forward_hook)
 
         # Backup original forward
-        original_forward = target_layer.forward
-        def patched_forward(self, *args, **kwargs):
-            kwargs['output_attentions'] = True
-            return original_forward(*args, **kwargs)
+        from types import MethodType
 
-        # TODO: how to unpatch it?
-        target_layer.forward = MethodType(patched_forward, target_layer)
+        def patch_alignment_layer(tfmr, alignment_layer_idx=12):
+            # ⛔ Old (broken) logic – causes recursion:
+            # target_layer = tfmr.layers[alignment_layer_idx].self_attn
+            # def patched_forward(self, *args, **kwargs):
+            #     kwargs['output_attentions'] = True
+            #     return original_forward(*args, **kwargs)
+            # target_layer.forward = MethodType(patched_forward, target_layer)
+
+            # ✅ Corrected logic to avoid recursion:
+            target_layer = tfmr.layers[alignment_layer_idx].self_attn
+            original_forward = target_layer.forward  # Save the real unpatched forward
+
+            def patched_forward(self, *args, **kwargs):
+                kwargs['output_attentions'] = True
+                return original_forward(*args, **kwargs)
+
+            target_layer.forward = MethodType(patched_forward, target_layer)
+
 
     def step(self, logits):
         """

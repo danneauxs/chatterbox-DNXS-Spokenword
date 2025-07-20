@@ -1,0 +1,11 @@
+Dr. -> Doctor
+Mr. -> Mister
+Mrs. -> Missus
+Ms. -> Miss
+U.S. -> US
+U.K. -> UK
+etc. -> et cetera
+vs. -> versus
+1st -> first
+2nd -> second
+3rd -> third

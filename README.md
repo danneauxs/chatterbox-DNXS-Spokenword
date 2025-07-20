@@ -1,103 +1,176 @@
+# Enhanced ChatterboxTTS Audiobook Pipeline
 
-<img width="1200" alt="cb-big2" src="https://github.com/user-attachments/assets/bd8c5f03-e91d-4ee5-b680-57355da204d1" />
+A comprehensive audiobook production system built on ChatterboxTTS with advanced text processing, quality control, and repair tools.
 
-# Chatterbox TTS
+## Features
 
-[![Alt Text](https://img.shields.io/badge/listen-demo_samples-blue)](https://resemble-ai.github.io/chatterbox_demopage/)
-[![Alt Text](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/ResembleAI/Chatterbox)
-[![Alt Text](https://static-public.podonos.com/badges/insight-on-pdns-sm-dark.svg)](https://podonos.com/resembleai/chatterbox)
-[![Discord](https://img.shields.io/discord/1377773249798344776?label=join%20discord&logo=discord&style=flat)](https://discord.gg/XqS7RxUp)
+- **Intelligent Text Processing**: Smart sentence chunking with boundary detection
+- **Sentiment-Aware TTS**: VADER sentiment analysis for dynamic parameter adjustment  
+- **Quality Control**: Audio trimming, silence insertion, and validation
+- **Repair Tools**: Interactive chunk editing and re-synthesis
+- **Professional Output**: M4B audiobooks with metadata and normalization
+- **Resume Capability**: Continue interrupted processing from any point
+- **Memory Optimization**: Efficient processing for long books
 
-_Made with ♥️ by <a href="https://resemble.ai" target="_blank"><img width="100" alt="resemble-logo-horizontal" src="https://github.com/user-attachments/assets/35cf756b-3506-4943-9c72-c05ddfa4e525" /></a>
+## Quick Start
 
-We're excited to introduce Chatterbox, [Resemble AI's](https://resemble.ai) first production-grade open source TTS model. Licensed under MIT, Chatterbox has been benchmarked against leading closed-source systems like ElevenLabs, and is consistently preferred in side-by-side evaluations.
+### 1. Installation
 
-Whether you're working on memes, videos, games, or AI agents, Chatterbox brings your content to life. It's also the first open source TTS model to support **emotion exaggeration control**, a powerful feature that makes your voices stand out. Try it now on our [Hugging Face Gradio app.](https://huggingface.co/spaces/ResembleAI/Chatterbox)
-
-If you like the model but need to scale or tune it for higher accuracy, check out our competitively priced TTS service (<a href="https://resemble.ai">link</a>). It delivers reliable performance with ultra-low latency of sub 200ms—ideal for production use in agents, applications, or interactive media.
-
-# Key Details
-- SoTA zeroshot TTS
-- 0.5B Llama backbone
-- Unique exaggeration/intensity control
-- Ultra-stable with alignment-informed inference
-- Trained on 0.5M hours of cleaned data
-- Watermarked outputs
-- Easy voice conversion script
-- [Outperforms ElevenLabs](https://podonos.com/resembleai/chatterbox)
-
-# Tips
-- **General Use (TTS and Voice Agents):**
-  - The default settings (`exaggeration=0.5`, `cfg_weight=0.5`) work well for most prompts.
-  - If the reference speaker has a fast speaking style, lowering `cfg_weight` to around `0.3` can improve pacing.
-
-- **Expressive or Dramatic Speech:**
-  - Try lower `cfg_weight` values (e.g. `~0.3`) and increase `exaggeration` to around `0.7` or higher.
-  - Higher `exaggeration` tends to speed up speech; reducing `cfg_weight` helps compensate with slower, more deliberate pacing.
-
-
-# Installation
-```
-pip install chatterbox-tts
+```bash
+git clone [your-fork-url]
+cd chatterbox-audiobook-pipeline
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
+### 2. Setup
 
-# Usage
+1. **Models**: ChatterboxTTS models will be downloaded automatically on first run
+2. **Voice Samples**: Add your voice cloning samples to `Voice_Samples/`
+3. **Books**: Create directories in `Text_Input/` with your book text files
+
+### 3. Basic Usage
+
+```bash
+python3 main_launcher.py
+```
+
+**Menu Options:**
+- **Option 1**: Full audiobook generation (text → JSON → audio → M4B)
+- **Option 3**: Combine existing audio chunks to M4B
+- **Option 4**: Generate JSON chunks only (no audio)
+- **Option 6**: Repair/edit individual chunks
+- **Option 7**: Generate audio from existing JSON
+
+## Directory Structure
+
+```
+├── Text_Input/           # Your book text files
+├── Voice_Samples/        # Voice cloning samples (.wav)
+├── Audiobook/           # Generated audiobooks and processing files
+├── src/chatterbox/      # Core TTS engine
+├── modules/             # Processing modules
+├── wrapper/             # Chunk editing tools
+├── tools/               # Utility scripts
+└── config/              # Configuration files
+```
+
+## Key Features
+
+### Text Processing
+- Smart sentence chunking with paragraph boundary detection
+- Unicode quote normalization and abbreviation replacement  
+- Punctuation-based silence insertion
+- Chapter and section detection
+
+### Audio Generation
+- **In-memory processing** for faster performance
+- Multi-threaded parallel TTS with dynamic worker allocation
+- Real-time performance monitoring
+- Model reinitialization for stability
+
+### Quality Control
+- Intelligent audio trimming using RMS energy detection
+- Hum detection and noise artifact identification
+- Optional ASR validation for accuracy checking
+- Quarantine system for problematic chunks
+
+### Professional Output
+- M4B audiobook format with metadata
+- Audio normalization and speed control (atempo)
+- Cover art and book information embedding
+- Chapter marking and navigation
+
+## Configuration
+
+Key settings in `config/config.py`:
+
 ```python
-import torchaudio as ta
-from chatterbox.tts import ChatterboxTTS
+# Performance
+MAX_WORKERS = 2                    # Parallel processing threads
+BATCH_SIZE = 500                   # Chunks per batch before model reload
 
-model = ChatterboxTTS.from_pretrained(device="cuda")
+# Audio Processing  
+ENABLE_AUDIO_TRIMMING = True       # Intelligent endpoint detection
+ATEMPO_SPEED = 0.9                 # Playback speed (0.5-2.0)
 
-text = "Ezreal and Jinx teamed up with Ahri, Yasuo, and Teemo to take down the enemy's Nexus in an epic late-game pentakill."
-wav = model.generate(text)
-ta.save("test-1.wav", wav, model.sr)
+# Silence Insertion (milliseconds)
+SILENCE_COMMA = 150
+SILENCE_PERIOD = 400
+SILENCE_PARAGRAPH = 800
+SILENCE_CHAPTER = 1500
 
-# If you want to synthesize with a different voice, specify the audio prompt
-AUDIO_PROMPT_PATH = "YOUR_FILE.wav"
-wav = model.generate(text, audio_prompt_path=AUDIO_PROMPT_PATH)
-ta.save("test-2.wav", wav, model.sr)
-```
-See `example_tts.py` and `example_vc.py` for more examples.
-
-# Acknowledgements
-- [Cosyvoice](https://github.com/FunAudioLLM/CosyVoice)
-- [Real-Time-Voice-Cloning](https://github.com/CorentinJ/Real-Time-Voice-Cloning)
-- [HiFT-GAN](https://github.com/yl4579/HiFTNet)
-- [Llama 3](https://github.com/meta-llama/llama3)
-- [S3Tokenizer](https://github.com/xingchensong/S3Tokenizer)
-
-# Built-in PerTh Watermarking for Responsible AI
-
-Every audio file generated by Chatterbox includes [Resemble AI's Perth (Perceptual Threshold) Watermarker](https://github.com/resemble-ai/perth) - imperceptible neural watermarks that survive MP3 compression, audio editing, and common manipulations while maintaining nearly 100% detection accuracy.
-
-
-## Watermark extraction
-
-You can look for the watermark using the following script.
-
-```python
-import perth
-import librosa
-
-AUDIO_PATH = "YOUR_FILE.wav"
-
-# Load the watermarked audio
-watermarked_audio, sr = librosa.load(AUDIO_PATH, sr=None)
-
-# Initialize watermarker (same as used for embedding)
-watermarker = perth.PerthImplicitWatermarker()
-
-# Extract watermark
-watermark = watermarker.get_watermark(watermarked_audio, sample_rate=sr)
-print(f"Extracted watermark: {watermark}")
-# Output: 0.0 (no watermark) or 1.0 (watermarked)
+# TTS Parameters
+DEFAULT_EXAGGERATION = 0.4
+DEFAULT_CFG_WEIGHT = 0.5  
+DEFAULT_TEMPERATURE = 0.9
 ```
 
+## Advanced Usage
 
-# Official Discord
+### Custom TTS Parameters
+The system supports per-chunk parameter adjustment based on sentiment analysis:
+- **Exaggeration**: Emotional intensity (0.0-2.0)
+- **CFG Weight**: Faithfulness to text (0.0-1.0)
+- **Temperature**: Randomness/creativity (0.0-5.0)
 
-👋 Join us on [Discord](https://discord.gg/XqS7RxUp) and let's build something awesome together!
+### Chunk Repair Workflow
+1. Generate initial audiobook
+2. Use chunk repair tool to identify issues
+3. Edit text or regenerate specific chunks
+4. Combine repaired chunks into final audiobook
 
-# Disclaimer
-Don't use this model to do bad things. Prompts are sourced from freely available data on the internet.
+### Resume Processing
+Interrupted processing can be resumed from any chunk:
+```bash
+# Resume from specific chunk number
+python3 -c "from modules.resume_handler import resume_book_from_chunk; resume_book_from_chunk(150)"
+```
+
+## Dependencies
+
+- Python 3.8+
+- PyTorch (CUDA recommended)
+- ChatterboxTTS
+- FFmpeg (for audio processing)
+- See `requirements.txt` for complete list
+
+## Hardware Requirements
+
+- **RAM**: 8GB+ recommended  
+- **GPU**: NVIDIA GPU with 6GB+ VRAM (optional but recommended)
+- **Storage**: 2-5GB per hour of final audio
+
+## Troubleshooting
+
+### Common Issues
+- **Slow performance**: Reduce `MAX_WORKERS` or `BATCH_SIZE`
+- **VRAM errors**: Enable `USE_DYNAMIC_WORKERS` or reduce batch size
+- **Audio quality**: Adjust trimming thresholds in config
+- **Text processing**: Check input encoding and formatting
+
+### Performance Optimization
+- Use GPU acceleration when available
+- Adjust worker count based on system capabilities
+- Monitor VRAM usage during processing
+- Use SSD storage for better I/O performance
+
+## Contributing
+
+This is a fork of the original ChatterboxTTS. Contributions welcome for:
+- Bug fixes and performance improvements
+- Additional audio processing features
+- UI/UX enhancements
+- Documentation improvements
+
+## License
+
+[Check original ChatterboxTTS license]
+
+## Acknowledgments
+
+- Original ChatterboxTTS team
+- OpenAI Whisper for ASR validation
+- VADER sentiment analysis library
+- FFmpeg for audio processing
