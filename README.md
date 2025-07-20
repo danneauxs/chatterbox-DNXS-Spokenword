@@ -16,11 +16,45 @@ A comprehensive audiobook production system built on ChatterboxTTS with advanced
 
 ### 1. Installation
 
+#### Prerequisites
+
+**macOS:**
+```bash
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python 3.8+ and FFmpeg
+brew install python@3.11 ffmpeg
+
+# Install Git (if not already installed)
+brew install git
+```
+
+**Linux/Ubuntu:**
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv ffmpeg git
+```
+
+**Windows:**
+- Install Python 3.8+ from python.org
+- Install FFmpeg from https://ffmpeg.org/
+- Install Git from git-scm.com
+
+#### Setup
+
 ```bash
 git clone https://github.com/danneauxs/chatterbox-DNXS-Spokenword.git
 cd chatterbox-DNXS-Spokenword
+
+# Create virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Activate virtual environment
+source venv/bin/activate  # macOS/Linux
+# venv\Scripts\activate   # Windows
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -141,6 +175,7 @@ python3 -c "from modules.resume_handler import resume_book_from_chunk; resume_bo
 - **RAM**: 8GB+ recommended  
 - **GPU**: NVIDIA GPU with 6GB+ VRAM (optional but recommended)
 - **Storage**: 2-5GB per hour of final audio
+- **macOS**: Apple Silicon (M1/M2) supported via MPS acceleration
 
 ## Troubleshooting
 
@@ -149,6 +184,8 @@ python3 -c "from modules.resume_handler import resume_book_from_chunk; resume_bo
 - **VRAM errors**: Enable `USE_DYNAMIC_WORKERS` or reduce batch size
 - **Audio quality**: Adjust trimming thresholds in config
 - **Text processing**: Check input encoding and formatting
+- **macOS Permission Issues**: Run `sudo xcode-select --install` if encountering build errors
+- **macOS FFmpeg**: Use `brew install ffmpeg` rather than other installation methods
 
 ### Performance Optimization
 - Use GPU acceleration when available
