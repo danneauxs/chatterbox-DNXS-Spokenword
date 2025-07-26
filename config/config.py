@@ -148,7 +148,7 @@ VADER_REPETITION_PENALTY_SENSITIVITY = 0.1  # Adjust repetition penalty based on
 # Hard limits to prevent extreme, undesirable audio artifacts.
 TTS_PARAM_MIN_EXAGGERATION = 0.3
 TTS_PARAM_MAX_EXAGGERATION = 0.85
-TTS_PARAM_MIN_CFG_WEIGHT = 0.2
+TTS_PARAM_MIN_CFG_WEIGHT = 0.0              # 0.0 disables CFG for speed boost
 TTS_PARAM_MAX_CFG_WEIGHT = 0.9
 
 TTS_PARAM_MIN_TEMPERATURE = 0.3

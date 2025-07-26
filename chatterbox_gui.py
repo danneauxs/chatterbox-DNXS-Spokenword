@@ -148,11 +148,11 @@ class ChatterboxMainWindow(QMainWindow):
         
         # CFG Weight
         self.cfg_weight_spin = QDoubleSpinBox()
-        self.cfg_weight_spin.setRange(0.0, 1.0)
+        self.cfg_weight_spin.setRange(0.0, 1.0)  # 0.0 = disabled for speed
         self.cfg_weight_spin.setSingleStep(0.1)
         self.cfg_weight_spin.setValue(DEFAULT_CFG_WEIGHT)
         self.cfg_weight_spin.setDecimals(2)
-        tts_layout.addRow("CFG Weight:", self.cfg_weight_spin)
+        tts_layout.addRow("CFG Weight (0.0 = faster):", self.cfg_weight_spin)
         
         # Temperature
         self.temperature_spin = QDoubleSpinBox()
