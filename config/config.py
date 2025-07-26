@@ -117,6 +117,11 @@ DEFAULT_EXAGGERATION = 0.4            # Emotion intensity (0.0-2.0 range)
 DEFAULT_CFG_WEIGHT = 0.3            # Faithfulness to text (0.0-1.0 range)
 DEFAULT_TEMPERATURE = 0.4         # Randomness/creativity (0.0-1.0 range)
 
+# Advanced Sampling Parameters (Min_P Sampler Support)
+DEFAULT_MIN_P = 0.05                   # Min probability threshold (0.0 disables)
+DEFAULT_TOP_P = 1.0                    # Top-p sampling (1.0 disables)
+DEFAULT_REPETITION_PENALTY = 1.2      # Repetition penalty (1.0 = no penalty)
+
 # ============================================================================
 # VADER SENTIMENT TO TTS PARAMETER MAPPING
 # ============================================================================
@@ -136,6 +141,8 @@ BASE_TEMPERATURE = DEFAULT_TEMPERATURE    # Default: 0.7
 VADER_EXAGGERATION_SENSITIVITY = 0.3  # e.g., compound of 0.8 -> 1.0 + (0.8 * 0.5) = 1.4
 VADER_CFG_WEIGHT_SENSITIVITY = 0.833 # Negative: more emotional text is less strict
 VADER_TEMPERATURE_SENSITIVITY = 0.35  # More emotional text gets slightly more creative
+VADER_MIN_P_SENSITIVITY = 0.02        # Adjust min_p based on emotion (subtle changes)
+VADER_REPETITION_PENALTY_SENSITIVITY = 0.1  # Adjust repetition penalty based on emotion
 
 # --- Min/Max Clamps ---
 # Hard limits to prevent extreme, undesirable audio artifacts.
@@ -146,6 +153,13 @@ TTS_PARAM_MAX_CFG_WEIGHT = 0.9
 
 TTS_PARAM_MIN_TEMPERATURE = 0.3
 TTS_PARAM_MAX_TEMPERATURE = 0.7
+
+TTS_PARAM_MIN_MIN_P = 0.0              # 0.0 disables min_p
+TTS_PARAM_MAX_MIN_P = 0.5              # Higher values too restrictive
+TTS_PARAM_MIN_TOP_P = 0.5              # Too low causes repetition
+TTS_PARAM_MAX_TOP_P = 1.0              # 1.0 disables top_p
+TTS_PARAM_MIN_REPETITION_PENALTY = 1.0 # 1.0 = no penalty
+TTS_PARAM_MAX_REPETITION_PENALTY = 3.0 # Higher values too restrictive
 
 # ============================================================================
 # BATCH PROCESSING SETTINGS

@@ -164,10 +164,18 @@ def prompt_tts_params():
     cfg_weight = get_float_input("CFG Weight", DEFAULT_CFG_WEIGHT)
     temperature = get_float_input("Temperature", DEFAULT_TEMPERATURE)
     
+    print("\nAdvanced Sampling Parameters:")
+    min_p = get_float_input("Min-P (0.0 disables)", DEFAULT_MIN_P)
+    top_p = get_float_input("Top-P (1.0 disables)", DEFAULT_TOP_P)
+    repetition_penalty = get_float_input("Repetition Penalty", DEFAULT_REPETITION_PENALTY)
+    
     return {
         'exaggeration': exaggeration,
         'cfg_weight': cfg_weight,
         'temperature': temperature,
+        'min_p': min_p,
+        'top_p': top_p,
+        'repetition_penalty': repetition_penalty,
         'use_vader': use_vader
     }
 
