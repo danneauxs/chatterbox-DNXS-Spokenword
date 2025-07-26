@@ -106,19 +106,27 @@ def run_chunk_repair_tool():
 
         while True:
             print(f"\n📝 Chunk: \"{chunk['text']}\"")
-            print(f"  Boundary: {chunk['boundary_type']}, Sentiment: {chunk.get('sentiment_score', 'N/A')}, Pause: {chunk.get('pause_duration', 'N/A')}")
-            print(f"  Audio file: chunk_{index+1:05d}.wav")
+            
+            # Display current chunk metadata
+            sentiment_compound = chunk.get('sentiment_compound', chunk.get('sentiment_score', 'N/A'))
+            tts_params = chunk.get('tts_params', {})
+            
+            print(f"  📍 Index: {index}, Boundary: {chunk['boundary_type']}")
+            print(f"  😊 Sentiment: {sentiment_compound}")
+            print(f"  🎛️  TTS Params: exag={tts_params.get('exaggeration', 'N/A')}, cfg={tts_params.get('cfg_weight', 'N/A')}, temp={tts_params.get('temperature', 'N/A')}")
+            print(f"  📁 Audio file: chunk_{index+1:05d}.wav")
             print("\nOptions:")
             print(" 1. Play original audio")
             print(" 2. Edit text content")
-            print(" 3. Edit chunk values (boundary, sentiment, pause)")
-            print(" 4. Resynthesize audio with current settings")
-            print(" 5. Play revised audio")
-            print(" 6. Accept revision (replace original with revised)")
-            print(" 7. Back to search")
+            print(" 3. Edit chunk metadata (boundary, sentiment)")
+            print(" 4. Edit TTS parameters (exaggeration, cfg_weight, temperature)")
+            print(" 5. Resynthesize audio with current settings")
+            print(" 6. Play revised audio")
+            print(" 7. Accept revision (replace original with revised)")
+            print(" 8. Back to search")
 
             try:
-                choice = input("\n💡 Enter option number [1-7]: ").strip()
+                choice = input("\n💡 Enter option number [1-8]: ").strip()
             except (EOFError, KeyboardInterrupt):
                 print("\n❌ Input cancelled")
                 return
@@ -140,52 +148,102 @@ def run_chunk_repair_tool():
                 else:
                     print("❌ No changes made")
             elif choice == "3":
-                print("\n✏️ Edit Chunk Values:")
+                print("\n✏️ Edit Chunk Metadata:")
                 print(f"Current boundary type: {chunk['boundary_type']}")
                 boundary = input("New boundary type (none/paragraph_end/chapter_start/chapter_end/section_break) [Enter to skip]: ").strip()
                 
-                current_sentiment = chunk.get('sentiment_score', 'N/A')
+                current_sentiment = chunk.get('sentiment_compound', chunk.get('sentiment_score', 'N/A'))
                 print(f"Current sentiment score: {current_sentiment}")
-                sentiment = input("New sentiment score (-1.0 to 1.0) [Enter to skip]: ").strip()
-                
-                current_pause = chunk.get('pause_duration', 'N/A')
-                print(f"Current pause duration: {current_pause}")
-                pause = input("New pause duration (milliseconds) [Enter to skip]: ").strip()
+                sentiment = input("New sentiment compound score (-1.0 to 1.0) [Enter to skip]: ").strip()
 
                 try:
-                    update_chunk(
-                        chunk,
-                        boundary_type=boundary if boundary else None,
-                        sentiment_score=float(sentiment) if sentiment else None,
-                        pause_duration=float(pause) if pause else None
-                    )
+                    if boundary:
+                        chunk['boundary_type'] = boundary
+                        print(f"✅ Updated boundary type to: {boundary}")
+                    
+                    if sentiment:
+                        sentiment_val = float(sentiment)
+                        if -1.0 <= sentiment_val <= 1.0:
+                            chunk['sentiment_compound'] = sentiment_val
+                            # Also update old key for compatibility
+                            chunk['sentiment_score'] = sentiment_val
+                            print(f"✅ Updated sentiment score to: {sentiment_val}")
+                        else:
+                            print("❌ Sentiment score must be between -1.0 and 1.0")
+                    
                     save_chunks(str(chunk_path), chunks)
-                    print("✅ Chunk values updated successfully")
+                    print("✅ Chunk metadata updated successfully")
                 except ValueError as e:
                     print(f"❌ Invalid input: {e}")
                 except Exception as e:
                     print(f"❌ Error updating chunk: {e}")
             elif choice == "4":
+                print("\n🎛️ Edit TTS Parameters:")
+                current_tts_params = chunk.get('tts_params', {})
+                
+                def get_float_input(param_name, current_val, min_val=None, max_val=None):
+                    while True:
+                        try:
+                            prompt = f"New {param_name} [{current_val}]: "
+                            value = input(prompt).strip()
+                            if not value:
+                                return current_val
+                            new_val = float(value)
+                            if min_val is not None and new_val < min_val:
+                                print(f"❌ {param_name} must be >= {min_val}")
+                                continue
+                            if max_val is not None and new_val > max_val:
+                                print(f"❌ {param_name} must be <= {max_val}")
+                                continue
+                            return new_val
+                        except ValueError:
+                            print(f"❌ Invalid input. Please enter a valid number.")
+                
+                # Edit TTS parameters
+                print(f"Current TTS parameters:")
+                current_exag = current_tts_params.get('exaggeration', 1.0)
+                current_cfg = current_tts_params.get('cfg_weight', 0.7)
+                current_temp = current_tts_params.get('temperature', 0.7)
+                
+                print(f"  Exaggeration: {current_exag}")
+                print(f"  CFG Weight: {current_cfg}")
+                print(f"  Temperature: {current_temp}")
+                
+                new_exag = get_float_input("exaggeration", current_exag, 0.0, 3.0)
+                new_cfg = get_float_input("CFG weight", current_cfg, 0.0, 2.0)
+                new_temp = get_float_input("temperature", current_temp, 0.0, 2.0)
+                
+                # Update chunk TTS parameters
+                if 'tts_params' not in chunk:
+                    chunk['tts_params'] = {}
+                
+                chunk['tts_params']['exaggeration'] = new_exag
+                chunk['tts_params']['cfg_weight'] = new_cfg
+                chunk['tts_params']['temperature'] = new_temp
+                
+                save_chunks(str(chunk_path), chunks)
+                print(f"✅ TTS parameters updated: exag={new_exag}, cfg={new_cfg}, temp={new_temp}")
+            elif choice == "5":
                 print(f"\n🎤 Resynthesizing chunk {index+1:05d}...")
                 revised_path = synthesize_chunk(chunk, index, book_name, book_audio_dir, revision=True)
                 if revised_path:
                     print(f"✅ Chunk resynthesized: {revised_path}")
                 else:
                     print("❌ Failed to resynthesize chunk")
-            elif choice == "5":
+            elif choice == "6":
                 rev_path = book_audio_dir / f"chunk_{index+1:05d}_rev.wav"
                 print(f"\n🔊 Playing revised audio: {rev_path.name}")
                 play_chunk_audio(str(rev_path))
-            elif choice == "6":
+            elif choice == "7":
                 print(f"\n📦 Accepting revision for chunk {index+1:05d}...")
                 accept_revision(index, book_audio_dir)
                 print("✅ Revision accepted successfully")
                 break
-            elif choice == "7":
+            elif choice == "8":
                 print("🔙 Returning to search...")
                 break
             elif choice.lower() == 'q':
                 print("🚪 Exiting chunk repair tool...")
                 return
             else:
-                print(f"❌ Invalid option '{choice}'. Please enter a number 1-7 (or 'q' to quit).")
+                print(f"❌ Invalid option '{choice}'. Please enter a number 1-8 (or 'q' to quit).")

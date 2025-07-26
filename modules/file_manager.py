@@ -18,7 +18,7 @@ from config.config import *
 
 def list_voice_samples():
     """List available voice samples"""
-    return sorted(VOICE_SAMPLES_DIR.glob("*.wav"))
+    return sorted(VOICE_SAMPLES_DIR.glob("*.wav"), key=lambda x: x.stem.lower())
 
 def ensure_voice_sample_compatibility(input_path, output_dir=None):
     """Ensure voice sample is compatible with TTS (24kHz mono)"""

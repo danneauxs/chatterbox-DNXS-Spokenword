@@ -136,6 +136,30 @@ def prompt_tts_params():
             except ValueError:
                 print(f"❌ Invalid input. Please enter a valid number.")
     
+    def get_yes_no_input(prompt, default=True):
+        while True:
+            default_str = "Y/n" if default else "y/N"
+            value = input(f"{prompt} [{default_str}]: ").strip().lower()
+            if not value:
+                return default
+            if value in ['y', 'yes']:
+                return True
+            elif value in ['n', 'no']:
+                return False
+            else:
+                print("❌ Please enter 'y' for yes or 'n' for no.")
+    
+    # VADER sentiment analysis option
+    use_vader = get_yes_no_input("🎭 Use VADER sentiment analysis to adjust TTS params per chunk?", True)
+    
+    if use_vader:
+        print("✅ VADER enabled - TTS params will be adjusted based on chunk sentiment")
+        print("   (Base values will be modified up/down per chunk)")
+    else:
+        print("❌ VADER disabled - TTS params will be fixed for all chunks")
+        print("   (Same values used for every chunk)")
+    
+    print("\nBase TTS Parameters:")
     exaggeration = get_float_input("Exaggeration", DEFAULT_EXAGGERATION)
     cfg_weight = get_float_input("CFG Weight", DEFAULT_CFG_WEIGHT)
     temperature = get_float_input("Temperature", DEFAULT_TEMPERATURE)
@@ -143,7 +167,8 @@ def prompt_tts_params():
     return {
         'exaggeration': exaggeration,
         'cfg_weight': cfg_weight,
-        'temperature': temperature
+        'temperature': temperature,
+        'use_vader': use_vader
     }
 
 # ============================================================================

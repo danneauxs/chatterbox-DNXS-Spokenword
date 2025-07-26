@@ -56,20 +56,20 @@ TRIMMING_BUFFER_MS = 50               # Small buffer after detected speech endpo
 # SILENCE DURATION SETTINGS (milliseconds)
 # ============================================================================
 SILENCE_CHAPTER_START = 500           # Half second for chapter beginnings
-SILENCE_CHAPTER_END = 800             # Longer pause before new chapter
-SILENCE_SECTION_BREAK = 600           # Section transitions
+SILENCE_CHAPTER_END = 400             # Longer pause before new chapter
+SILENCE_SECTION_BREAK = 300           # Section transitions
 SILENCE_PARAGRAPH_END = 300           # Standard paragraph breaks
 
 # Punctuation-specific silence settings (milliseconds)
 SILENCE_COMMA = 150                   # Brief pause after commas
-SILENCE_SEMICOLON = 250               # Medium pause after semicolons
-SILENCE_COLON = 300                   # Pause after colons
-SILENCE_PERIOD = 400                  # Sentence end pause
-SILENCE_QUESTION_MARK = 450           # Question pause (slightly longer)
-SILENCE_EXCLAMATION = 400             # Exclamation pause
+SILENCE_SEMICOLON = 150               # Medium pause after semicolons
+SILENCE_COLON = 150                   # Pause after colons
+SILENCE_PERIOD = 200                  # Sentence end pause
+SILENCE_QUESTION_MARK = 350           # Question pause (slightly longer)
+SILENCE_EXCLAMATION = 300             # Exclamation pause
 SILENCE_DASH = 200                    # Em dash pause
-SILENCE_ELLIPSIS = 350                # Ellipsis pause (suspense)
-SILENCE_QUOTE_END = 250               # End of quoted speech
+SILENCE_ELLIPSIS = 80                # Ellipsis pause (suspense)
+SILENCE_QUOTE_END = 150               # End of quoted speech
 
 # Chunk-level silence settings
 ENABLE_CHUNK_END_SILENCE = True       # Add silence to end of every chunk
@@ -114,8 +114,8 @@ CYAN = "\033[96m"
 # TTS MODEL PARAMETERS (DEFAULTS)
 # ============================================================================
 DEFAULT_EXAGGERATION = 0.4            # Emotion intensity (0.0-2.0 range)
-DEFAULT_CFG_WEIGHT = 0.5             # Faithfulness to text (0.0-1.0 range)
-DEFAULT_TEMPERATURE = 0.9         # Randomness/creativity (0.0-1.0 range)
+DEFAULT_CFG_WEIGHT = 0.3            # Faithfulness to text (0.0-1.0 range)
+DEFAULT_TEMPERATURE = 0.4         # Randomness/creativity (0.0-1.0 range)
 
 # ============================================================================
 # VADER SENTIMENT TO TTS PARAMETER MAPPING
@@ -133,19 +133,19 @@ BASE_TEMPERATURE = DEFAULT_TEMPERATURE    # Default: 0.7
 # --- Sensitivity ---
 # How much VADER's compound score affects each parameter.
 # Higher values mean more dramatic changes based on sentiment.
-VADER_EXAGGERATION_SENSITIVITY = 0.5  # e.g., compound of 0.8 -> 1.0 + (0.8 * 0.5) = 1.4
-VADER_CFG_WEIGHT_SENSITIVITY = -0.2 # Negative: more emotional text is less strict
-VADER_TEMPERATURE_SENSITIVITY = 0.15  # More emotional text gets slightly more creative
+VADER_EXAGGERATION_SENSITIVITY = 0.3  # e.g., compound of 0.8 -> 1.0 + (0.8 * 0.5) = 1.4
+VADER_CFG_WEIGHT_SENSITIVITY = 0.833 # Negative: more emotional text is less strict
+VADER_TEMPERATURE_SENSITIVITY = 0.35  # More emotional text gets slightly more creative
 
 # --- Min/Max Clamps ---
 # Hard limits to prevent extreme, undesirable audio artifacts.
-TTS_PARAM_MIN_EXAGGERATION = 0.1
-TTS_PARAM_MAX_EXAGGERATION = 2.0
-TTS_PARAM_MIN_CFG_WEIGHT = 0.1
-TTS_PARAM_MAX_CFG_WEIGHT = 1.0
+TTS_PARAM_MIN_EXAGGERATION = 0.3
+TTS_PARAM_MAX_EXAGGERATION = 0.85
+TTS_PARAM_MIN_CFG_WEIGHT = 0.2
+TTS_PARAM_MAX_CFG_WEIGHT = 0.9
 
-TTS_PARAM_MIN_TEMPERATURE = 0.1
-TTS_PARAM_MAX_TEMPERATURE = 5.0
+TTS_PARAM_MIN_TEMPERATURE = 0.3
+TTS_PARAM_MAX_TEMPERATURE = 0.7
 
 # ============================================================================
 # BATCH PROCESSING SETTINGS

@@ -378,10 +378,12 @@ def generate_enriched_chunks(text_file, output_dir, user_tts_params=None):
         base_exaggeration = user_tts_params.get('exaggeration', BASE_EXAGGERATION)
         base_cfg_weight = user_tts_params.get('cfg_weight', BASE_CFG_WEIGHT)
         base_temperature = user_tts_params.get('temperature', BASE_TEMPERATURE)
+        use_vader = user_tts_params.get('use_vader', True)  # Default to True for backward compatibility
     else:
         base_exaggeration = BASE_EXAGGERATION
         base_cfg_weight = BASE_CFG_WEIGHT
         base_temperature = BASE_TEMPERATURE
+        use_vader = True  # Default behavior
 
     enriched = []
     chunk_texts = [chunk_text for chunk_text, _ in chunks]
@@ -390,14 +392,21 @@ def generate_enriched_chunks(text_file, output_dir, user_tts_params=None):
         sentiment_scores = analyzer.polarity_scores(chunk_text)
         compound_score = sentiment_scores['compound']
 
-        exaggeration = base_exaggeration + (compound_score * VADER_EXAGGERATION_SENSITIVITY)
-        cfg_weight = base_cfg_weight + (compound_score * VADER_CFG_WEIGHT_SENSITIVITY)
-        temperature = base_temperature + (compound_score * VADER_TEMPERATURE_SENSITIVITY)
+        if use_vader:
+            # Apply VADER sentiment adjustments
+            exaggeration = base_exaggeration + (compound_score * VADER_EXAGGERATION_SENSITIVITY)
+            cfg_weight = base_cfg_weight + (compound_score * VADER_CFG_WEIGHT_SENSITIVITY)
+            temperature = base_temperature + (compound_score * VADER_TEMPERATURE_SENSITIVITY)
 
-        # Clamp values to defined min/max
-        exaggeration = round(max(TTS_PARAM_MIN_EXAGGERATION, min(exaggeration, TTS_PARAM_MAX_EXAGGERATION)), 2)
-        cfg_weight = round(max(TTS_PARAM_MIN_CFG_WEIGHT, min(cfg_weight, TTS_PARAM_MAX_CFG_WEIGHT)), 2)
-        temperature = round(max(TTS_PARAM_MIN_TEMPERATURE, min(temperature, TTS_PARAM_MAX_TEMPERATURE)), 2)
+            # Clamp values to defined min/max
+            exaggeration = round(max(TTS_PARAM_MIN_EXAGGERATION, min(exaggeration, TTS_PARAM_MAX_EXAGGERATION)), 2)
+            cfg_weight = round(max(TTS_PARAM_MIN_CFG_WEIGHT, min(cfg_weight, TTS_PARAM_MAX_CFG_WEIGHT)), 2)
+            temperature = round(max(TTS_PARAM_MIN_TEMPERATURE, min(temperature, TTS_PARAM_MAX_TEMPERATURE)), 2)
+        else:
+            # Use fixed base values (no VADER adjustment)
+            exaggeration = base_exaggeration
+            cfg_weight = base_cfg_weight
+            temperature = base_temperature
 
         boundary_type = detect_content_boundaries(chunk_text, i, chunk_texts, is_para_end)
         

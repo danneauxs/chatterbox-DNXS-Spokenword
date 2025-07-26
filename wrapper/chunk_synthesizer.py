@@ -1,6 +1,7 @@
 from pathlib import Path
 import torch
 import time
+import re
 from pydub import AudioSegment
 
 from modules.tts_engine import load_optimized_model
@@ -8,8 +9,100 @@ from modules.file_manager import ensure_voice_sample_compatibility, list_voice_s
 from modules.audio_processor import apply_smart_fade_memory, smart_audio_validation_memory, process_audio_with_trimming_and_silence
 from config.config import *
 
+def get_original_voice_from_log(book_name):
+    """Extract original voice name from run log"""
+    audiobook_root = Path(AUDIOBOOK_ROOT)
+    log_file = audiobook_root / book_name / "run.log"
+    
+    if log_file.exists():
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("Voice: ") or line.startswith("Voice used: "):
+                        voice_name = line.split(": ", 1)[1].strip()
+                        print(f"📄 Found original voice in log: {voice_name}")
+                        return voice_name
+        except Exception as e:
+            print(f"⚠️ Error reading run log: {e}")
+    
+    return None
+
+def get_original_voice_from_filename(book_name):
+    """Extract voice name from existing audiobook filename"""
+    audiobook_root = Path(AUDIOBOOK_ROOT)
+    book_dir = audiobook_root / book_name
+    
+    # Look for WAV files with voice pattern: BookName [VoiceName].wav
+    for wav_file in book_dir.glob("*.wav"):
+        match = re.search(r'\[([^\]]+)\]\.wav$', wav_file.name)
+        if match:
+            voice_name = match.group(1)
+            print(f"📁 Found original voice in filename: {voice_name}")
+            return voice_name
+    
+    # Look for M4B files with voice pattern: BookName[VoiceName].m4b
+    for m4b_file in book_dir.glob("*.m4b"):
+        match = re.search(r'\[([^\]]+)\]\.m4b$', m4b_file.name)
+        if match:
+            voice_name = match.group(1)
+            print(f"📁 Found original voice in M4B filename: {voice_name}")
+            return voice_name
+    
+    return None
+
+def find_voice_file_by_name(voice_name):
+    """Find voice file by name in Voice_Samples directory"""
+    voice_files = list_voice_samples()
+    
+    # Exact match first
+    for voice_file in voice_files:
+        if voice_file.stem == voice_name:
+            print(f"✅ Found exact voice match: {voice_file.name}")
+            return voice_file
+    
+    # Partial match (case insensitive)
+    voice_name_lower = voice_name.lower()
+    for voice_file in voice_files:
+        if voice_name_lower in voice_file.stem.lower():
+            print(f"✅ Found partial voice match: {voice_file.name}")
+            return voice_file
+    
+    return None
+
+def get_tts_params_for_chunk(chunk):
+    """Extract TTS parameters from chunk data or prompt user"""
+    # Check if chunk has TTS params stored
+    if 'tts_params' in chunk:
+        tts_params = chunk['tts_params']
+        print(f"📊 Using stored TTS params: exag={tts_params.get('exaggeration', 1.0)}, cfg={tts_params.get('cfg_weight', 0.7)}, temp={tts_params.get('temperature', 0.7)}")
+        return tts_params
+    
+    # Prompt user for TTS parameters
+    print(f"\n⚙️ TTS Parameters for chunk synthesis:")
+    
+    def get_float_input(prompt, default):
+        while True:
+            try:
+                value = input(f"{prompt} [{default}]: ").strip()
+                if not value:
+                    return default
+                return float(value)
+            except ValueError:
+                print(f"❌ Invalid input. Please enter a valid number.")
+    
+    exaggeration = get_float_input("Exaggeration", DEFAULT_EXAGGERATION)
+    cfg_weight = get_float_input("CFG Weight", DEFAULT_CFG_WEIGHT)
+    temperature = get_float_input("Temperature", DEFAULT_TEMPERATURE)
+    
+    return {
+        'exaggeration': exaggeration,
+        'cfg_weight': cfg_weight,
+        'temperature': temperature
+    }
+
 def synthesize_chunk(chunk, index, book_name, audio_dir, revision=False):
-    """Generate audio for a single chunk using simplified TTS process"""
+    """Generate audio for a single chunk using original voice and TTS parameters"""
     filename = f"chunk_{index+1:05d}_rev.wav" if revision else f"chunk_{index+1:05d}.wav"
     out_path = Path(audio_dir) / filename
     
@@ -21,17 +114,38 @@ def synthesize_chunk(chunk, index, book_name, audio_dir, revision=False):
         print(f"🤖 Loading TTS model for chunk synthesis...")
         model = load_optimized_model(device)
         
-        # Get voice sample - use first available voice for now
-        voice_files = list_voice_samples()
-        if not voice_files:
-            print("❌ No voice samples found")
-            return None
-            
-        voice_path = voice_files[0]  # Use first available voice
+        # Find original voice used for this book
+        print(f"🔍 Finding original voice for book: {book_name}")
+        
+        # Try to get voice from run log first
+        original_voice_name = get_original_voice_from_log(book_name)
+        
+        # Fallback to filename parsing
+        if not original_voice_name:
+            original_voice_name = get_original_voice_from_filename(book_name)
+        
+        # Find the voice file
+        voice_path = None
+        if original_voice_name:
+            voice_path = find_voice_file_by_name(original_voice_name)
+        
+        # Fallback to first available voice if original not found
+        if not voice_path:
+            print(f"⚠️ Original voice not found, using first available voice")
+            voice_files = list_voice_samples()
+            if not voice_files:
+                print("❌ No voice samples found")
+                return None
+            voice_path = voice_files[0]
+        
+        print(f"🎤 Using voice: {voice_path.stem}")
         compatible_voice = ensure_voice_sample_compatibility(voice_path)
         
+        # Get TTS parameters for this chunk
+        tts_params = get_tts_params_for_chunk(chunk)
+        
         # Prepare model with voice
-        model.prepare_conditionals(compatible_voice, exaggeration=1.0)
+        model.prepare_conditionals(compatible_voice)
         
         # Get chunk text
         chunk_text = chunk.get('text', '')
@@ -40,13 +154,14 @@ def synthesize_chunk(chunk, index, book_name, audio_dir, revision=False):
             return None
             
         print(f"🎤 Synthesizing: {chunk_text[:50]}...")
+        print(f"📊 TTS params: exag={tts_params['exaggeration']}, cfg={tts_params['cfg_weight']}, temp={tts_params['temperature']}")
         
-        # Generate audio
+        # Generate audio with specified parameters
         with torch.no_grad():
             wav = model.generate(chunk_text, 
-                               exaggeration=1.0,
-                               cfg_weight=0.7, 
-                               temperature=0.7).detach().cpu()
+                               exaggeration=tts_params['exaggeration'],
+                               cfg_weight=tts_params['cfg_weight'], 
+                               temperature=tts_params['temperature']).detach().cpu()
         
         if wav.dim() == 1:
             wav = wav.unsqueeze(0)

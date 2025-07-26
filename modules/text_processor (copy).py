@@ -327,61 +327,42 @@ def sentence_chunk_text(text, max_words=MAX_CHUNK_WORDS, min_words=MIN_CHUNK_WOR
         # Add this paragraph's chunks to the overall list
         all_processed_chunks.extend(paragraph_chunks)
 
+    # Respect punctuation rules: combine complete sentences only, never break mid-sentence
     final_chunks = []
-    current_chunk_parts = []
-    current_chunk_is_para_end = False
+    accumulator = []
+    accumulator_word_count = 0
 
-    for i, (sentence_text, is_sentence_para_end) in enumerate(all_processed_chunks):
-        sentence_word_count = len(sentence_text.split())
+    for chunk_text, is_para_end in all_processed_chunks:
+        word_count = len(chunk_text.split())
+        
+        # If this complete sentence would fit within limits when combined
+        if accumulator_word_count + word_count <= max_words and not is_para_end:
+            accumulator.append(chunk_text)
+            accumulator_word_count += word_count
+        else:
+            # Flush accumulator if it has content
+            if accumulator:
+                # Join complete sentences with spaces (preserving original punctuation)
+                combined = " ".join(accumulator)
+                final_chunks.append((combined, False))
+                accumulator = []
+                accumulator_word_count = 0
+            
+            # Add current chunk
+            if word_count >= min_words or is_para_end:
+                # Chunk meets minimum or is paragraph end - use as-is  
+                final_chunks.append((chunk_text, is_para_end))
+            else:
+                # Start new accumulator with this short complete sentence
+                accumulator = [chunk_text]
+                accumulator_word_count = word_count
 
-        is_chapter_header = (
-            any(word in sentence_text.lower() for word in ['chapter', 'section', 'part', 'prologue', 'epilogue']) and
-            sentence_word_count <= 10
-        )
+    # Handle any remaining accumulator
+    if accumulator:
+        combined = " ".join(accumulator)
+        final_chunks.append((combined, True))  # Mark as paragraph end
 
-        # If it's a chapter header, flush current buffer and add it as a standalone chunk
-        if is_chapter_header:
-            if current_chunk_parts:
-                combined_text = " ".join(current_chunk_parts)
-                final_chunks.append((combined_text, current_chunk_is_para_end))
-                current_chunk_parts = []
-                current_chunk_is_para_end = False
-            final_chunks.append((sentence_text, True)) # Chapter headers are always paragraph ends
-            continue
-
-        # Calculate word count if we add this sentence to the current buffer
-        current_word_count = sum(len(p.split()) for p in current_chunk_parts)
-        potential_word_count_with_new_sentence = current_word_count + sentence_word_count
-
-        # Condition to flush the current chunk (without the new sentence)
-        # This happens if adding the new sentence would make the current chunk too long
-        if current_chunk_parts and potential_word_count_with_new_sentence > max_words:
-            combined_text = " ".join(current_chunk_parts)
-            final_chunks.append((combined_text, current_chunk_is_para_end))
-            current_chunk_parts = []
-            current_chunk_is_para_end = False # Reset for the new chunk
-
-        # Add the current sentence to the buffer
-        current_chunk_parts.append(sentence_text)
-        if is_sentence_para_end:
-            current_chunk_is_para_end = True
-
-        # Now, after adding the current sentence, check if we should flush the *newly formed* current_chunk_parts
-        # This happens if it's a paragraph end AND the current chunk meets min_words
-        # Or if it's the very last sentence and the chunk meets min_words (handled by final flush)
-        if is_sentence_para_end and sum(len(p.split()) for p in current_chunk_parts) >= min_words:
-            combined_text = " ".join(current_chunk_parts)
-            final_chunks.append((combined_text, current_chunk_is_para_end))
-            current_chunk_parts = []
-            current_chunk_is_para_end = False
-
-    # After the loop, handle any remaining content in the buffer
-    if current_chunk_parts:
-        combined_text = " ".join(current_chunk_parts)
-        # The very last chunk of the text is always considered a paragraph end
-        final_chunks.append((combined_text, True))
-
-    # Apply short sentence cleanup (this function might need review too)
+    # Apply short sentence cleanup
     fixed_chunks = []
     for chunk_text, is_para_end in final_chunks:
         fixed_text = fix_short_sentence_artifacts(chunk_text)
@@ -403,14 +384,13 @@ def break_long_sentence_backwards(sentence, max_words, min_words):
     1. ; (semicolon) - major pause
     2. — (em dash) - major pause  
     3. , (comma) - minor pause
-    4. Force break at word limit (last resort)
+    4. Force break at max_words (last resort)
     """
     
     # Punctuation patterns to search for (in order of preference)
     punctuation_patterns = [
         r';\s*',     # semicolon + optional space
-        r'—\s*',     # em dash + optional space
-        r'–\s*',     # en dash + optional space
+        r'—\s*',     # em dash + optional space  
         r',\s*',     # comma + optional space
     ]
     
@@ -426,41 +406,36 @@ def break_long_sentence_backwards(sentence, max_words, min_words):
             break
             
         # Text exceeds max_words - find backwards break point
-        # Search for punctuation within the current 'remaining_text' up to max_words
-        # We need to find the *last* punctuation mark that results in a chunk <= max_words
-        best_break_index = -1 # Index in 'words' list
-        best_break_pos_in_text = -1 # Character position in 'remaining_text'
-
-        # Iterate backwards from max_words down to min_words (or 1 if min_words is very small)
-        # to find the latest punctuation that keeps the chunk within limits.
-        for i in range(min(max_words, len(words)) -1, 0, -1):
-            sub_text = " ".join(words[:i+1]) # Text up to current word
-            
-            found_punctuation = False
-            for pattern in punctuation_patterns:
-                matches = list(re.finditer(pattern, sub_text))
-                if matches:
-                    # Take the rightmost match in this sub_text
-                    last_match = matches[-1]
-                    # Ensure the break is within the max_words limit
-                    if len(sub_text[:last_match.end()].split()) <= max_words:
-                        best_break_index = i # Store word index
-                        best_break_pos_in_text = last_match.end() # Store char position
-                        found_punctuation = True
-                        break # Found a good break for this sub_text, move to next i
-            if found_punctuation:
-                break # Found the best break for the overall chunk, exit outer loop
-
-        if best_break_pos_in_text != -1:
+        # Start from max_words position and work backwards
+        test_words = words[:max_words]
+        test_text = " ".join(test_words)
+        
+        best_break_pos = None
+        best_break_pattern = None
+        
+        # Try each punctuation pattern, working backwards from end
+        for pattern in punctuation_patterns:
+            # Find all matches of this pattern in the test text
+            matches = list(re.finditer(pattern, test_text))
+            if matches:
+                # Take the rightmost (latest) match - this preserves most content
+                last_match = matches[-1]
+                best_break_pos = last_match.end()
+                best_break_pattern = pattern
+                break
+        
+        if best_break_pos:
             # Found punctuation - break after it, keeping punctuation with preceding text
-            chunk_text = remaining_text[:best_break_pos_in_text].strip()
+            chunk_text = test_text[:best_break_pos].strip()
             chunks.append(chunk_text)
-            remaining_text = remaining_text[best_break_pos_in_text:].strip()
+            
+            # Resume from after the punctuation (skip the punctuation character)
+            remaining_text = test_text[best_break_pos:].strip()
         else:
-            # No punctuation found within the desired range - keep sentence intact
-            # This preserves sentence coherence over word count limits
-            chunks.append(remaining_text.strip())
-            break
+            # No punctuation found - force break at max_words
+            chunk_text = " ".join(words[:max_words])
+            chunks.append(chunk_text)
+            remaining_text = " ".join(words[max_words:]).strip()
     
     return chunks
 
@@ -468,68 +443,21 @@ def break_long_sentence_backwards(sentence, max_words, min_words):
 # CONTENT BOUNDARY DETECTION
 # ============================================================================
 
-def detect_punctuation_boundary(chunk_text):
-    """
-    Detect the ending punctuation of a text chunk for precise silence insertion.
-    
-    Returns specific punctuation boundary types:
-    - "comma" -> Brief pause after commas
-    - "semicolon" -> Medium pause after semicolons  
-    - "colon" -> Pause after colons
-    - "period" -> Sentence end pause
-    - "question_mark" -> Question pause
-    - "exclamation" -> Exclamation pause
-    - "dash" -> Em dash pause
-    - "ellipsis" -> Ellipsis pause (suspense)
-    - "quote_end" -> End of quoted speech
-    - None -> No specific punctuation detected
-    """
-    # Strip whitespace and newlines for accurate detection
-    text = chunk_text.strip()
-    
-    if not text:
-        return None
-    
-    # Check ending punctuation patterns (in order of specificity)
-    if text.endswith('...'):
-        return "ellipsis"
-    elif text.endswith('"') or text.endswith("'"):
-        return "quote_end"
-    elif text.endswith('!'):
-        return "exclamation"
-    elif text.endswith('?'):
-        return "question_mark"
-    elif text.endswith('.'):
-        return "period"
-    elif text.endswith(':'):
-        return "colon"
-    elif text.endswith(';'):
-        return "semicolon"
-    elif text.endswith(','):
-        return "comma"
-    elif text.endswith('—') or text.endswith('–'):
-        return "dash"
-    
-    return None
-
-def detect_content_boundaries(chunk_text, chunk_index, all_chunks, is_paragraph_end=False):
+def detect_content_boundaries(chunk_text, chunk_index, all_chunks):
     """
     Detect chapter breaks and paragraph endings for appropriate silence insertion.
-    Now enhanced with punctuation-specific boundary detection.
     
     BOUNDARY DETECTION REQUIREMENTS:
     - Chapter start: "Chapter N", "Ch. N", "I.", "1." patterns
     - Chapter end: Next chunk is a chapter start
     - Section break: Multiple asterisks, hashes, or em-dashes
-    - Paragraph end: Detected via chunking process flag or content analysis
-    - Punctuation: Specific ending punctuation for precise silence timing
+    - Paragraph end: Text ends with newlines or is marked as paragraph boundary
     
     Returns boundary_type for silence insertion:
     - "chapter_start" -> Long pause before chapter
     - "chapter_end" -> Long pause after chapter
     - "section_break" -> Medium pause for section breaks  
     - "paragraph_end" -> Short pause for paragraph breaks
-    - Punctuation types: "comma", "period", "question_mark", etc.
     - None -> No special boundary detected
     """
     boundary_type = None
@@ -559,14 +487,10 @@ def detect_content_boundaries(chunk_text, chunk_index, all_chunks, is_paragraph_
     if re.search(r'\*{3,}|\#{3,}|—{3,}', chunk_text):
         boundary_type = "section_break"
 
-    # Paragraph ending detection
-    # Use the is_paragraph_end flag from chunking process since newlines are stripped
-    if is_paragraph_end and boundary_type is None:
-        boundary_type = "paragraph_end"
-
-    # If no major structural boundary found, check punctuation
-    if boundary_type is None:
-        boundary_type = detect_punctuation_boundary(chunk_text)
+    # Paragraph ending (already detected in chunking)
+    if chunk_text.endswith('\n\n') or chunk_text.endswith('\n'):
+        if boundary_type is None:
+            boundary_type = "paragraph_end"
 
     return boundary_type
 
