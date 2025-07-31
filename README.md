@@ -1,3 +1,4 @@
+# UNDER DEVELOPMENT - adding qt gui for local use. HF install not tested.  Soon to come small runpod deploy (cli menu interface)
 # Enhanced ChatterboxTTS Audiobook Pipeline
 
 A comprehensive audiobook production system built on ChatterboxTTS with advanced text processing, quality control, and repair tools.
