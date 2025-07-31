@@ -10,8 +10,14 @@ git+https://github.com/resemble-ai/chatterbox-tts.git
 
 # Audio processing
 soundfile>=0.12.0
-librosa>=0.9.0
+librosa>=0.10.0
 pydub>=0.25.0
+
+# Voice Analysis (GUI Tab 9 and 10)
+praat-parselmouth>=0.4.3
+matplotlib>=3.5.0
+scipy>=1.8.0
+PyQt5>=5.15.0
 
 # Text processing and NLP
 vaderSentiment>=3.3.0
