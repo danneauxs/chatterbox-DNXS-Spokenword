@@ -6,7 +6,8 @@ huggingface_hub>=0.15.0
 safetensors>=0.3.0
 
 # ChatterboxTTS specific  
-git+https://github.com/resemble-ai/chatterbox-tts.git
+git+https://github.com/resemble-ai/chatterbox.git
+#git+https://github.com/resemble-ai/chatterbox-tts.git
 
 # Audio processing
 soundfile>=0.12.0
