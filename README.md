@@ -206,20 +206,27 @@ This is a fork of the original ChatterboxTTS. Contributions welcome for:
 
 [Check original ChatterboxTTS license]
 
-## Acknowledgments
+### 📚 Cited Work
 
-- Original ChatterboxTTS team
-- OpenAI Whisper for ASR validation
-- VADER sentiment analysis library
-- FFmpeg for audio processing
+This project builds upon or references the following model:
 
+**Chatterbox-TTS**  
+Resemble AI (2025)  
+GitHub repository: [https://github.com/resemble-ai/chatterbox](https://github.com/resemble-ai/chatterbox)
+
+Formal citation:
+
+```bibtex
 @misc{chatterboxtts2025,
   author       = {{Resemble AI}},
   title        = {{Chatterbox-TTS}},
   year         = {2025},
-  howpublished = {\url{https://github.com/resemble-ai/chatterbox}},
+  howpublished = {https://github.com/resemble-ai/chatterbox},
   note         = {GitHub repository}
-
+}
 ```
-# Disclaimer
+
+### ⚠️ Disclaimer
+
 Don't use this model to do bad things. Prompts are sourced from freely available data on the internet.
+
