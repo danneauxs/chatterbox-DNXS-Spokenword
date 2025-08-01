@@ -209,22 +209,11 @@ This is a fork of the original ChatterboxTTS. Contributions welcome for:
 ### 📚 Cited Work
 
 This project builds upon or references the following model:
+Formal citation:
 
 **Chatterbox-TTS**  
 Resemble AI (2025)  
 GitHub repository: [https://github.com/resemble-ai/chatterbox](https://github.com/resemble-ai/chatterbox)
-
-Formal citation:
-
-```bibtex
-@misc{chatterboxtts2025,
-  author       = {{Resemble AI}},
-  title        = {{Chatterbox-TTS}},
-  year         = {2025},
-  howpublished = {https://github.com/resemble-ai/chatterbox},
-  note         = {GitHub repository}
-}
-```
 
 ### ⚠️ Disclaimer
 
