@@ -1,10 +1,10 @@
 # ChatterboxTTS HuggingFace Spaces Requirements
 # Optimized for HF Spaces environment with flexible versions
 
-# Core ML and TTS - Essential (flexible versions for HF compatibility)
-torch>=2.0.0
-torchaudio>=2.0.0
-transformers>=4.20.0
+# Core ML and TTS - Essential (pinned versions for fast builds)
+torch==2.6.0
+torchaudio==2.6.0
+transformers==4.46.3
 huggingface_hub>=0.15.0
 safetensors>=0.3.0
 
@@ -21,8 +21,8 @@ openai-whisper>=20231117
 psutil>=5.8.0
 pynvml>=11.0.0
 
-# Core scientific computing (flexible for HF environment)
-numpy>=1.21.0
+# Core scientific computing (pinned for fast builds)
+numpy==2.2.0
 scipy>=1.7.0
 
 # Text processing
