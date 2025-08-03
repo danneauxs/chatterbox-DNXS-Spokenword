@@ -15,7 +15,8 @@ Choose your preferred interface:
 - <img width="1202" height="804" alt="tab1" src="https://github.com/user-attachments/assets/d22d6744-f799-4faa-aa7c-3ffb2ec2d861" />
 
 - **💻 CLI Interface** - Command-line tool for automation and full featured
-- <img width="1200" height="803" alt="tab2" src="https://github.com/user-attachments/assets/019533f7-c427-4cbe-9a74-8b4917c69185" />
+-<img width="567" height="469" alt="Screenshot at 2025-03-28 09-37-55" src="https://github.com/user-attachments/assets/4820cb8c-0f84-4315-8f11-acd2fcba911e" />
+
 
 - 
 - **🌐 Local Gradio** - Web interface for local use - Book conversion only
