@@ -11,10 +11,12 @@ A comprehensive TTS audiobook production system built on ChatterboxTTS with mult
 Choose your preferred interface:
 
 - **🖥️ GUI Interface** - Stupidly Full-featured desktop application (PyQt5)
-- <img src="file:///home/danno/MyApps/chatterbox%20(copy)/Docs/tab1.png" title="" alt="" width="431">
 - 
+- <img width="1202" height="804" alt="tab1" src="https://github.com/user-attachments/assets/d22d6744-f799-4faa-aa7c-3ffb2ec2d861" />
+
 - **💻 CLI Interface** - Command-line tool for automation and full featured
-- <img src="file:///home/danno/.var/app/com.github.marktext.marktext/config/marktext/images/2025-08-03-09-22-30-image.png" title="" alt="" width="425">
+- <img width="1200" height="803" alt="tab2" src="https://github.com/user-attachments/assets/019533f7-c427-4cbe-9a74-8b4917c69185" />
+
 - 
 - **🌐 Local Gradio** - Web interface for local use - Book conversion only
 - **☁️ Cloud Deployment** - Deploy to HuggingFace Spaces or RunPod book conversion on
