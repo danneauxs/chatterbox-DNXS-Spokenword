@@ -1,0 +1,50 @@
+# Local Development Optimized Dockerfile
+# Fast build, uses local model cache via volume mounts, dev-friendly
+
+FROM python:3.10-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    git \
+    vim \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Create necessary directories (will be volume mounted in practice)
+RUN mkdir -p Text_Input Voice_Samples Output Audiobook logs
+
+# Set environment variables for development
+ENV PYTHONPATH="/app"
+ENV GRADIO_SERVER_NAME="0.0.0.0"
+ENV GRADIO_SERVER_PORT=7860
+ENV GRADIO_SHARE=false
+
+# Development convenience - install additional dev tools
+RUN pip install ipython jupyter
+
+# Make scripts executable
+RUN chmod +x launch*.sh
+
+# Expose port
+EXPOSE 7860
+
+# Default to interactive mode for development
+CMD ["python3", "main_launcher.py"]
+
+# Volume mount points for development:
+# docker run -v /path/to/local/Text_Input:/app/Text_Input \
+#            -v /path/to/local/Voice_Samples:/app/Voice_Samples \
+#            -v /path/to/local/Output:/app/Output \
+#            -v /home/user/.cache/huggingface:/root/.cache/huggingface \
+#            -p 7860:7860 chatterbox:local

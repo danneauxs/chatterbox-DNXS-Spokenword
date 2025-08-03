@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # HuggingFace Spaces simulation
+  hf:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.hf
+    ports:
+      - "7860:7860"
+    environment:
+      - HF_HOME=/tmp/huggingface
+      - TRANSFORMERS_CACHE=/tmp/transformers
+    volumes:
+      - ./Text_Input:/app/Text_Input
+      - ./Voice_Samples:/app/Voice_Samples
+      - ./Output:/app/Output
+
+  # RunPod simulation (requires nvidia-docker)
+  runpod:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runpod
+    ports:
+      - "7861:7860"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./Output:/app/Output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Local development
+  local:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.local
+    ports:
+      - "7862:7860"
+    volumes:
+      - .:/app
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ~/.cache/torch:/root/.cache/torch
+      - ./Text_Input:/app/Text_Input
+      - ./Voice_Samples:/app/Voice_Samples
+      - ./Output:/app/Output
+    environment:
+      - PYTHONPATH=/app
+    stdin_open: true
+    tty: true
+
+# Usage:
+# docker-compose up hf      # Test HF Spaces version
+# docker-compose up runpod  # Test RunPod version (needs GPU)
+# docker-compose up local   # Local development
