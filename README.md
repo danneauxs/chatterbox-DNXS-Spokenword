@@ -15,9 +15,8 @@ Choose your preferred interface:
 - <img width="1202" height="804" alt="tab1" src="https://github.com/user-attachments/assets/d22d6744-f799-4faa-aa7c-3ffb2ec2d861" />
 
 - **💻 CLI Interface** - Command-line tool for automation and full featured
--<img width="567" height="469" alt="Screenshot at 2025-03-28 09-37-55" src="https://github.com/user-attachments/assets/4820cb8c-0f84-4315-8f11-acd2fcba911e" />
-
-
+- 
+-<img width="614" height="376" alt=" cli" src="https://github.com/user-attachments/assets/4af986db-2587-48d5-bdf9-15d0928e3a1b" />
 - 
 - **🌐 Local Gradio** - Web interface for local use - Book conversion only
 - **☁️ Cloud Deployment** - Deploy to HuggingFace Spaces or RunPod book conversion on
