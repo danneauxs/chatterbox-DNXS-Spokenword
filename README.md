@@ -1,4 +1,4 @@
-# 🎤 ChatterboxTTS
+# 🎤 resemble-ai/ChatterboxTTS
 
 # * DNXS-Spokenword *
 
