@@ -86,11 +86,34 @@ def monitor_vram_usage(operation_name=""):
         return allocated, reserved
     return 0, 0
 
-def get_optimal_workers():
-    """Dynamic worker allocation based on VRAM usage"""
+def get_optimal_workers(user_max_workers=None):
+    """Dynamic worker allocation based on device type and resources"""
+    # Check for user override first
+    if user_max_workers is not None:
+        print(f"👤 Using user-defined workers: {user_max_workers}")
+        return int(user_max_workers)
+        
     if not USE_DYNAMIC_WORKERS:
         return MAX_WORKERS
 
+    # CPU-based worker calculation
+    if not torch.cuda.is_available():
+        import psutil
+        cpu_cores = psutil.cpu_count(logical=False)  # Physical cores
+        available_memory = psutil.virtual_memory().available / 1024**3  # GB
+        
+        # Each TTS model instance needs ~2-3GB RAM
+        # Conservative estimation: allow 1 worker per 4GB available RAM
+        memory_limited_workers = max(1, int(available_memory / 4))
+        
+        # CPU-based calculation: use 50% of physical cores for intensive TTS work
+        cpu_limited_workers = max(1, int(cpu_cores * 0.5))
+        
+        optimal_workers = min(memory_limited_workers, cpu_limited_workers, MAX_WORKERS)
+        print(f"💻 CPU mode: {cpu_cores} cores, {available_memory:.1f}GB RAM → {optimal_workers} workers")
+        return optimal_workers
+    
+    # GPU-based worker calculation (existing logic)
     allocated_vram = torch.cuda.memory_allocated() / 1024**3
 
     if allocated_vram < 5.0:
@@ -101,17 +124,40 @@ def get_optimal_workers():
         return 1
 
 def load_optimized_model(device):
-    """Load TTS model with memory optimizations"""
+    """Load TTS model with memory optimizations and device detection"""
     from chatterbox.tts import ChatterboxTTS
+    
+    # Detect available device if not specified or if CUDA not available
+    if device == "cuda" and not torch.cuda.is_available():
+        print("⚠️  CUDA not available, falling back to CPU")
+        device = "cpu"
+    elif device == "auto":
+        if torch.cuda.is_available():
+            device = "cuda"
+            print("✅ CUDA detected, using GPU")
+        else:
+            device = "cpu"
+            print("💻 No GPU detected, using CPU")
+    
+    print(f"🔧 Loading ChatterboxTTS model on device: {device}")
 
     try:
-        # Try to load with FP16 if supported
-        model = ChatterboxTTS.from_pretrained(device=device, torch_dtype=torch.float16)
-        logging.info("✅ Loaded model in FP16 mode (halved VRAM usage)")
-    except:
-        # Fallback to default loading
+        # Load model (ChatterboxTTS.from_pretrained doesn't support torch_dtype parameter)
         model = ChatterboxTTS.from_pretrained(device=device)
-        logging.info("⚠️ Using FP32 mode (FP16 not supported)")
+        logging.info(f"✅ Loaded ChatterboxTTS model on {device}")
+    except Exception as e:
+        print(f"❌ Failed to load model on {device}: {e}")
+        if device == "cuda":
+            print("🔄 Retrying with CPU...")
+            try:
+                model = ChatterboxTTS.from_pretrained(device="cpu")
+                logging.info("✅ Loaded model on CPU (GPU failed)")
+                device = "cpu"
+            except Exception as e2:
+                print(f"❌ Failed to load model on CPU: {e2}")
+                raise e2
+        else:
+            raise e
 
     # Only apply eval() and benchmark if the model has these attributes
     if hasattr(model, 'eval'):
@@ -262,8 +308,9 @@ def process_one_chunk(
             
             # Note: Audio trimming will handle end-of-speech cleanup more precisely
 
-            # ASR validation (memory-based processing)
-            if ENABLE_ASR and asr_model is not None:
+            # ASR validation (memory-based processing) - check user setting first
+            enable_asr_user = tts_params.get('enable_asr', False)
+            if (enable_asr_user or ENABLE_ASR) and asr_model is not None:
                 from modules.audio_processor import asr_f1_score
                 import io
                 import soundfile as sf
@@ -340,9 +387,10 @@ def process_one_chunk(
     # No intermediate file cleanup needed - all processing done in memory
 
     # Log details - only log ASR failures
-    if ENABLE_ASR and best_sim < 0.8:
+    asr_active = enable_asr_user or ENABLE_ASR
+    if asr_active and best_sim < 0.8:
         log_run_func(f"ASR VALIDATION FAILED - Chunk {chunk_id_str}:\nExpected:\n{chunk}\nActual:\n{best_asr_text}\nSimilarity: {best_sim:.3f}\n" + "="*50, log_path)
-    elif not ENABLE_ASR:
+    elif not asr_active:
         log_run_func(f"Chunk {chunk_id_str}: Original text: {chunk}", log_path)
 
     # Silence already added in memory above - no disk processing needed
@@ -378,12 +426,10 @@ def generate_enriched_chunks(text_file, output_dir, user_tts_params=None):
         base_exaggeration = user_tts_params.get('exaggeration', BASE_EXAGGERATION)
         base_cfg_weight = user_tts_params.get('cfg_weight', BASE_CFG_WEIGHT)
         base_temperature = user_tts_params.get('temperature', BASE_TEMPERATURE)
-        use_vader = user_tts_params.get('use_vader', True)  # Default to True for backward compatibility
     else:
         base_exaggeration = BASE_EXAGGERATION
         base_cfg_weight = BASE_CFG_WEIGHT
         base_temperature = BASE_TEMPERATURE
-        use_vader = True  # Default behavior
 
     enriched = []
     chunk_texts = [chunk_text for chunk_text, _ in chunks]
@@ -392,21 +438,14 @@ def generate_enriched_chunks(text_file, output_dir, user_tts_params=None):
         sentiment_scores = analyzer.polarity_scores(chunk_text)
         compound_score = sentiment_scores['compound']
 
-        if use_vader:
-            # Apply VADER sentiment adjustments
-            exaggeration = base_exaggeration + (compound_score * VADER_EXAGGERATION_SENSITIVITY)
-            cfg_weight = base_cfg_weight + (compound_score * VADER_CFG_WEIGHT_SENSITIVITY)
-            temperature = base_temperature + (compound_score * VADER_TEMPERATURE_SENSITIVITY)
+        exaggeration = base_exaggeration + (compound_score * VADER_EXAGGERATION_SENSITIVITY)
+        cfg_weight = base_cfg_weight + (compound_score * VADER_CFG_WEIGHT_SENSITIVITY)
+        temperature = base_temperature + (compound_score * VADER_TEMPERATURE_SENSITIVITY)
 
-            # Clamp values to defined min/max
-            exaggeration = round(max(TTS_PARAM_MIN_EXAGGERATION, min(exaggeration, TTS_PARAM_MAX_EXAGGERATION)), 2)
-            cfg_weight = round(max(TTS_PARAM_MIN_CFG_WEIGHT, min(cfg_weight, TTS_PARAM_MAX_CFG_WEIGHT)), 2)
-            temperature = round(max(TTS_PARAM_MIN_TEMPERATURE, min(temperature, TTS_PARAM_MAX_TEMPERATURE)), 2)
-        else:
-            # Use fixed base values (no VADER adjustment)
-            exaggeration = base_exaggeration
-            cfg_weight = base_cfg_weight
-            temperature = base_temperature
+        # Clamp values to defined min/max
+        exaggeration = round(max(TTS_PARAM_MIN_EXAGGERATION, min(exaggeration, TTS_PARAM_MAX_EXAGGERATION)), 2)
+        cfg_weight = round(max(TTS_PARAM_MIN_CFG_WEIGHT, min(cfg_weight, TTS_PARAM_MAX_CFG_WEIGHT)), 2)
+        temperature = round(max(TTS_PARAM_MIN_TEMPERATURE, min(temperature, TTS_PARAM_MAX_TEMPERATURE)), 2)
 
         boundary_type = detect_content_boundaries(chunk_text, i, chunk_texts, is_para_end)
         
@@ -516,18 +555,23 @@ def process_book_folder(book_dir, voice_path, tts_params, device, skip_cleanup=F
         compatible_voice = ensure_voice_sample_compatibility(voice_path, output_dir=tts_dir)
         model.prepare_conditionals(compatible_voice)
 
-        # Load ASR model once per batch if needed
+        # Load ASR model once per batch if needed (check user settings first, then global config)
         asr_model = None
-        if ENABLE_ASR:
+        enable_asr_user = tts_params.get('enable_asr', False)
+        if enable_asr_user or ENABLE_ASR:
             import whisper
-            print(f"🎤 Loading Whisper ASR model for batch...")
-            asr_model = whisper.load_model("base", device="cuda")
+            print(f"🎤 Loading Whisper ASR model for batch... (user setting: {enable_asr_user})")
+            # Use same device as TTS model, with fallback to CPU
+            asr_device = device if torch.cuda.is_available() and device == "cuda" else "cpu"
+            print(f"🎤 Loading ASR model on device: {asr_device}")
+            asr_model = whisper.load_model("base", device=asr_device)
 
         futures = []
         batch_results = []
 
         # Dynamic worker allocation
-        optimal_workers = get_optimal_workers()
+        user_max_workers = tts_params.get('max_workers', None)
+        optimal_workers = get_optimal_workers(user_max_workers)
         print(f"🔧 Using {optimal_workers} workers for batch {batch_start+1}-{batch_end}")
 
         with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
@@ -646,7 +690,7 @@ def process_book_folder(book_dir, voice_path, tts_params, device, skip_cleanup=F
         f"Combined WAV: {combined_wav_path}",
         "--- Generation Settings ---",
         f"Batch Processing: Enabled ({BATCH_SIZE} chunks per batch)",
-        f"ASR Enabled: {ENABLE_ASR}",
+        f"ASR Enabled: {enable_asr_user or ENABLE_ASR} (user: {enable_asr_user}, global: {ENABLE_ASR})",
         f"Hum Detection: {ENABLE_HUM_DETECTION}",
         f"Dynamic Workers: {USE_DYNAMIC_WORKERS}",
         f"Voice used: {voice_name}",

@@ -55,7 +55,16 @@ def punc_norm(text: str) -> str:
     # Add full stop if no ending punc
     text = text.rstrip(" ")
     sentence_enders = {".", "!", "?", "-", ","}
-    if not any(text.endswith(p) for p in sentence_enders):
+    
+    # Check for punctuation at end, including inside quotes
+    has_ending_punct = False
+    if any(text.endswith(p) for p in sentence_enders):
+        has_ending_punct = True
+    elif len(text) >= 2 and text[-1] in ['"', "'"] and text[-2] in sentence_enders:
+        # Check for punctuation before closing quote: ?" or .'
+        has_ending_punct = True
+    
+    if not has_ending_punct:
         text += "."
 
     return text

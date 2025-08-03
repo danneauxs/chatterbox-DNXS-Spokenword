@@ -33,6 +33,28 @@ VRAM_SAFETY_THRESHOLD = 6.5           # GB
 ENABLE_MID_DROP_CHECK = False
 ENABLE_ASR = False  # Disabled by default due to tensor dimension errors
 ASR_WORKERS = 4                       # Parallel ASR on CPU threads
+DEFAULT_ASR_MODEL = "base"            # Default Whisper model for ASR validation
+
+# ASR Model Memory Requirements (approximate)
+ASR_MODEL_VRAM_MB = {
+    "tiny": 39,
+    "base": 74, 
+    "small": 244,
+    "medium": 769,
+    "large": 1550,
+    "large-v2": 1550,
+    "large-v3": 1550
+}
+
+ASR_MODEL_RAM_MB = {
+    "tiny": 150,
+    "base": 300,
+    "small": 800, 
+    "medium": 2000,
+    "large": 4000,
+    "large-v2": 4000,
+    "large-v3": 4000
+}
 
 # ============================================================================
 # TTS HUM DETECTION SETTINGS
@@ -98,7 +120,9 @@ ATEMPO_SPEED = 0.95
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 os.environ["TRANSFORMERS_NO_PROGRESS_BAR"] = "1"
 os.environ["HF_TRANSFORMERS_NO_TQDM"] = "1"
-os.environ["TORCH_HUB_DIR"] = "/home/danno/.shared_model_cache/torch"
+# Cache handling is now done by launcher scripts:
+# - launch_gradio_local.sh: Sets shared cache for development
+# - launch_gradio.sh: Uses PyTorch defaults for containers/deployment
 
 # ============================================================================
 # COLOR CODES FOR TERMINAL OUTPUT
@@ -190,7 +214,7 @@ ENABLE_MFCC_VALIDATION = True        # Enable MFCC-based spectral analysis
 SPECTRAL_VARIANCE_LIMIT = 100.0      # Maximum spectral variance before flagging as artifact
 
 # --- Output Validation Settings ---
-ENABLE_OUTPUT_VALIDATION = True      # Enable TTS output vs input text validation
+ENABLE_OUTPUT_VALIDATION = True      # Enable quality control clearinghouse (runs individual checks when enabled)
 OUTPUT_VALIDATION_THRESHOLD = 0.6    # Minimum F1 score for output validation (reduced for punctuation tolerance)
 
 # --- Parameter Adjustment for Regeneration ---

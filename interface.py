@@ -40,18 +40,18 @@ import signal
 import torch
 import argparse
 from pathlib import Path
-from chatterbox.tts import ChatterboxTTS
+from src.chatterbox.tts import ChatterboxTTS
 
 # Set environment and suppress warnings
 sys.stdout.flush()
-os.environ["TORCH_HUB_DIR"] = "/tmp/torch_hub_silent"
+# Cache setup is handled in config.config - don't override here
 
 # Import modular components
 from config.config import *
 from modules.text_processor import (
     sentence_chunk_text, smart_punctuate, detect_content_boundaries
 )
-from chatterbox.tts import punc_norm
+from src.chatterbox.tts import punc_norm
 from modules.audio_processor import (
     smart_audio_validation, add_contextual_silence, pause_for_chunk_review
 )
@@ -149,6 +149,19 @@ def prompt_tts_params():
             else:
                 print("❌ Please enter 'y' for yes or 'n' for no.")
     
+    def get_choice_input(prompt, choices, default_idx=0):
+        while True:
+            try:
+                choice = input(f"{prompt} [{default_idx + 1}]: ").strip()
+                if not choice:
+                    return choices[default_idx]
+                idx = int(choice) - 1
+                if 0 <= idx < len(choices):
+                    return choices[idx]
+                print(f"❌ Please enter a number between 1 and {len(choices)}")
+            except ValueError:
+                print(f"❌ Please enter a valid number")
+    
     # VADER sentiment analysis option
     use_vader = get_yes_no_input("🎭 Use VADER sentiment analysis to adjust TTS params per chunk?", True)
     
@@ -158,6 +171,53 @@ def prompt_tts_params():
     else:
         print("❌ VADER disabled - TTS params will be fixed for all chunks")
         print("   (Same values used for every chunk)")
+    
+    # ASR validation option
+    use_asr = get_yes_no_input("🎤 Enable ASR validation for quality control?", False)
+    asr_config = None
+    
+    if use_asr:
+        print("\n🔍 Analyzing system capabilities...")
+        
+        # Import here to avoid circular imports
+        from modules.system_detector import get_system_profile, recommend_asr_models, print_system_summary
+        
+        profile = get_system_profile()
+        print_system_summary(profile)
+        
+        recommendations = recommend_asr_models(profile)
+        
+        print("\nASR Model Recommendations:")
+        print("🟢 [1] SAFE:     Fast processing, basic accuracy")
+        print("🟡 [2] MODERATE: Balanced speed/accuracy (recommended)")  
+        print("🔴 [3] INSANE:   Best accuracy, may stress system")
+        
+        choice_labels = ['safe', 'moderate', 'insane']
+        choice_idx = get_choice_input("Select ASR level", list(range(len(choice_labels))), 1)  # Default to moderate
+        selected_level = choice_labels[choice_idx]
+        
+        selected_config = recommendations[selected_level]
+        
+        print(f"\n✅ Selected {selected_level.upper()} ASR configuration:")
+        primary = selected_config['primary']
+        fallback = selected_config['fallback']
+        print(f"   Primary:  {primary['model']} on {primary['device'].upper()}")
+        print(f"   Fallback: {fallback['model']} on {fallback['device'].upper()}")
+        
+        if selected_level == 'insane':
+            print("⚠️  WARNING: INSANE mode may cause memory pressure and slower performance")
+        
+        asr_config = {
+            'enabled': True,
+            'level': selected_level,
+            'primary_model': primary['model'],
+            'primary_device': primary['device'],
+            'fallback_model': fallback['model'],
+            'fallback_device': fallback['device']
+        }
+    else:
+        print("❌ ASR disabled - no output validation will be performed")
+        asr_config = {'enabled': False}
     
     print("\nBase TTS Parameters:")
     exaggeration = get_float_input("Exaggeration", DEFAULT_EXAGGERATION)
@@ -176,7 +236,8 @@ def prompt_tts_params():
         'min_p': min_p,
         'top_p': top_p,
         'repetition_penalty': repetition_penalty,
-        'use_vader': use_vader
+        'use_vader': use_vader,
+        'asr_config': asr_config
     }
 
 # ============================================================================

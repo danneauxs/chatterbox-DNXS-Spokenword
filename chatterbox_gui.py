@@ -16,7 +16,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit,
                             QFileDialog, QProgressBar, QGroupBox, QCheckBox,
                             QMessageBox, QSplitter, QFrame, QListWidget, QListWidgetItem, QTabWidget,
-                            QFormLayout, QSlider, QSpacerItem, QSizePolicy, QScrollArea, QDialog)
+                            QFormLayout, QSlider, QSpacerItem, QSizePolicy, QScrollArea, QDialog,
+                            QButtonGroup, QRadioButton)
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer, pyqtSlot, Qt, QSettings
 from PyQt5.QtGui import QFont, QPixmap, QIcon
 
@@ -507,11 +508,64 @@ class ChatterboxMainWindow(QMainWindow):
         self.vader_checkbox.setChecked(True)
         checkbox_layout.addWidget(self.vader_checkbox)
 
-        self.asr_checkbox = QCheckBox("Enable ASR validation")
-        self.asr_checkbox.setChecked(False)  # Disabled by default due to tensor errors
+        self.asr_checkbox = QCheckBox("🎤 Enable ASR validation")
+        self.asr_checkbox.setChecked(False)
+        self.asr_checkbox.setToolTip("Smart quality control with automatic model selection")
         checkbox_layout.addWidget(self.asr_checkbox)
 
         vader_layout.addLayout(checkbox_layout)
+
+        # ASR Configuration Section (initially hidden)
+        self.asr_config_group = QGroupBox("🔍 ASR Configuration")
+        self.asr_config_group.setVisible(False)
+        asr_config_layout = QVBoxLayout()
+        
+        # System analysis section
+        analysis_layout = QHBoxLayout()
+        self.analyze_system_btn = QPushButton("🔍 Analyze System")
+        self.analyze_system_btn.setMaximumWidth(150)
+        analysis_layout.addWidget(self.analyze_system_btn)
+        analysis_layout.addStretch()
+        asr_config_layout.addLayout(analysis_layout)
+        
+        self.system_analysis_text = QTextEdit()
+        self.system_analysis_text.setMaximumHeight(80)
+        self.system_analysis_text.setPlainText("Click 'Analyze System' to detect capabilities")
+        self.system_analysis_text.setReadOnly(True)
+        asr_config_layout.addWidget(self.system_analysis_text)
+        
+        # ASR Level Selection
+        level_layout = QVBoxLayout()
+        level_label = QLabel("ASR Quality Level:")
+        level_label.setStyleSheet("font-weight: bold;")
+        level_layout.addWidget(level_label)
+        
+        self.asr_level_group = QButtonGroup()
+        
+        self.asr_safe_radio = QRadioButton("🟢 SAFE - Fast processing, basic accuracy")
+        self.asr_moderate_radio = QRadioButton("🟡 MODERATE - Balanced speed/accuracy (recommended)")
+        self.asr_insane_radio = QRadioButton("🔴 INSANE - Best accuracy, may stress system")
+        
+        self.asr_moderate_radio.setChecked(True)  # Default to moderate
+        
+        self.asr_level_group.addButton(self.asr_safe_radio, 0)
+        self.asr_level_group.addButton(self.asr_moderate_radio, 1)
+        self.asr_level_group.addButton(self.asr_insane_radio, 2)
+        
+        level_layout.addWidget(self.asr_safe_radio)
+        level_layout.addWidget(self.asr_moderate_radio)
+        level_layout.addWidget(self.asr_insane_radio)
+        asr_config_layout.addLayout(level_layout)
+        
+        # Selected models display
+        self.selected_models_text = QTextEdit()
+        self.selected_models_text.setMaximumHeight(60)
+        self.selected_models_text.setPlainText("Select level to see model configuration")
+        self.selected_models_text.setReadOnly(True)
+        asr_config_layout.addWidget(self.selected_models_text)
+        
+        self.asr_config_group.setLayout(asr_config_layout)
+        vader_layout.addWidget(self.asr_config_group)
 
 #        vader_info = QLabel("VADER dynamically adjusts TTS parameters based on emotional content of each chunk")
 #        vader_info.setStyleSheet("color: #666; font-style: italic;")
@@ -573,7 +627,7 @@ class ChatterboxMainWindow(QMainWindow):
         self.mfcc_validation_checkbox.setChecked(ENABLE_MFCC_VALIDATION)
         detection_layout.addRow(self.mfcc_validation_checkbox)
 
-        self.output_validation_checkbox = QCheckBox("Enable output validation (uses ASR)")
+        self.output_validation_checkbox = QCheckBox("Enable output validation")
         self.output_validation_checkbox.setChecked(ENABLE_OUTPUT_VALIDATION)
         detection_layout.addRow(self.output_validation_checkbox)
 
@@ -709,6 +763,11 @@ class ChatterboxMainWindow(QMainWindow):
         self.convert_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; }")
         self.convert_btn.clicked.connect(self.start_conversion)
         button_layout.addWidget(self.convert_btn)
+        
+        # ASR Event Handlers
+        self.asr_checkbox.stateChanged.connect(self.handle_asr_toggle)
+        self.analyze_system_btn.clicked.connect(self.analyze_system)
+        self.asr_level_group.buttonClicked.connect(self.update_asr_models)
 
         # Batch processing checkbox moved to button row
         self.add_to_batch_checkbox = QCheckBox("📦 Add to batch queue")
@@ -1886,6 +1945,69 @@ class ChatterboxMainWindow(QMainWindow):
             print(f"Error checking voice playback: {e}")
             self._reset_voice_buttons()
 
+    def handle_asr_toggle(self, state):
+        """Show/hide ASR configuration when ASR is toggled"""
+        self.asr_config_group.setVisible(state == 2)  # 2 = Qt.Checked
+    
+    def analyze_system(self):
+        """Analyze system capabilities and display summary"""
+        try:
+            from modules.system_detector import get_system_profile, categorize_system
+            
+            profile = get_system_profile()
+            categories = categorize_system(profile)
+            
+            summary = f"🖥️ System Profile:\n"
+            summary += f"VRAM: {profile['gpu']['total_mb']:,}MB total, {profile['available_vram_after_tts']:,}MB available after TTS ({categories['vram']} class)\n"
+            summary += f"RAM: {profile['ram']['total_mb']:,}MB total, {profile['ram']['available_mb']:,}MB available ({categories['ram']} class)\n"
+            summary += f"CPU: {profile['cpu_cores']} cores ({categories['cpu']} class)"
+            
+            if not profile['has_gpu']:
+                summary += f"\n⚠️ No CUDA GPU detected - ASR will run on CPU only"
+            
+            self.system_analysis_text.setPlainText(summary)
+            
+            # Update models display for current selection
+            self.update_asr_models()
+            
+        except Exception as e:
+            self.system_analysis_text.setPlainText(f"❌ Error analyzing system: {str(e)}")
+    
+    def update_asr_models(self):
+        """Update ASR model display based on selected level"""
+        try:
+            from modules.system_detector import get_system_profile, recommend_asr_models
+            
+            profile = get_system_profile()
+            recommendations = recommend_asr_models(profile)
+            
+            # Get selected level
+            level_map = {0: 'safe', 1: 'moderate', 2: 'insane'}
+            selected_id = self.asr_level_group.checkedId()
+            if selected_id == -1:
+                selected_id = 1  # Default to moderate
+            
+            asr_level = level_map[selected_id]
+            
+            if asr_level not in recommendations:
+                self.selected_models_text.setPlainText("❌ Invalid ASR level selected")
+                return
+            
+            config = recommendations[asr_level]
+            primary = config['primary']
+            fallback = config['fallback']
+            
+            result = f"Primary: {primary['model']} on {primary['device'].upper()}\n"
+            result += f"Fallback: {fallback['model']} on {fallback['device'].upper()}"
+            
+            if asr_level == 'insane':
+                result += f"\n⚠️ WARNING: INSANE mode may cause memory pressure"
+            
+            self.selected_models_text.setPlainText(result)
+            
+        except Exception as e:
+            self.selected_models_text.setPlainText(f"❌ Error getting models: {str(e)}")
+
     def browse_combine_book(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Book Folder to Combine")
         if folder:
@@ -2005,6 +2127,39 @@ class ChatterboxMainWindow(QMainWindow):
         text_file_path = Path(self.text_file_combo.currentData())
         use_vader = self.vader_checkbox.isChecked()
         enable_asr = self.asr_checkbox.isChecked()
+        
+        # Build ASR configuration
+        asr_config = {'enabled': False}
+        if enable_asr:
+            try:
+                from modules.system_detector import get_system_profile, recommend_asr_models
+                profile = get_system_profile() 
+                recommendations = recommend_asr_models(profile)
+                
+                # Get selected level
+                level_map = {0: 'safe', 1: 'moderate', 2: 'insane'}
+                selected_id = self.asr_level_group.checkedId()
+                if selected_id == -1:
+                    selected_id = 1  # Default to moderate
+                
+                asr_level = level_map[selected_id]
+                
+                if asr_level in recommendations:
+                    selected_config = recommendations[asr_level]
+                    primary = selected_config['primary']
+                    fallback = selected_config['fallback']
+                    
+                    asr_config = {
+                        'enabled': True,
+                        'level': asr_level,
+                        'primary_model': primary['model'],
+                        'primary_device': primary['device'],
+                        'fallback_model': fallback['model'],
+                        'fallback_device': fallback['device']
+                    }
+            except Exception as e:
+                print(f"⚠️ Error configuring ASR: {e}")
+                asr_config = {'enabled': False}
 
         # Collect TTS parameters
         tts_params = {
@@ -2015,7 +2170,7 @@ class ChatterboxMainWindow(QMainWindow):
             'top_p': self.top_p_spin.value(),
             'repetition_penalty': self.repetition_penalty_spin.value(),
             'use_vader': use_vader,
-            'enable_asr': enable_asr
+            'enable_asr': asr_config.get('enabled', False)  # Match GUI pattern
         }
 
         # Collect quality enhancement parameters
@@ -2063,7 +2218,8 @@ class ChatterboxMainWindow(QMainWindow):
             'default_temperature': self.default_temp_spin.value(),
             'vader_exag_sensitivity': self.vader_exag_sens_spin.value(),
             'vader_cfg_sensitivity': self.vader_cfg_sens_spin.value(),
-            'vader_temp_sensitivity': self.vader_temp_sens_spin.value()
+            'vader_temp_sensitivity': self.vader_temp_sens_spin.value(),
+            'asr_config': asr_config
         }
 
         self.log_output(f"Starting conversion for: {book_path.name}")
@@ -2071,7 +2227,16 @@ class ChatterboxMainWindow(QMainWindow):
         self.log_output(f"Voice: {voice_path.name}")
         self.log_output(f"Text file: {text_file_path.name}")
         self.log_output(f"VADER enabled: {use_vader}")
-        self.log_output(f"ASR enabled: {enable_asr}")
+        
+        # Display ASR configuration details
+        if asr_config.get('enabled'):
+            level = asr_config.get('level', 'unknown')
+            primary_model = asr_config.get('primary_model', 'unknown')
+            primary_device = asr_config.get('primary_device', 'unknown')
+            self.log_output(f"🎤 ASR enabled: {level.upper()} level ({primary_model} on {primary_device.upper()})")
+        else:
+            self.log_output(f"🎤 ASR disabled")
+            
         self.log_output(f"TTS params: {tts_params}")
         self.log_output(f"Quality enhancements: {quality_params}")
         self.log_output(f"🔧 Config params: {config_params}")
@@ -2126,7 +2291,8 @@ class ChatterboxMainWindow(QMainWindow):
                 skip_cleanup=False,
                 enable_asr=enable_asr,
                 quality_params=quality_params,
-                config_params=config_params
+                config_params=config_params,
+                specific_text_file=text_file_path
             )
 
             print(f"✅ Conversion completed successfully")

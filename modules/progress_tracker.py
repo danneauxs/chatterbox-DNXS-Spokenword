@@ -76,6 +76,7 @@ def log_chunk_progress(i, total_chunks, start_time, total_audio_duration=0.0):
         realtime_str = f"{GREEN}{actual_realtime:.2f}x{RESET}"
         audio_str = f" | Audio: {GREEN}{fmt(total_audio_duration)}{RESET}"
     else:
+        actual_realtime = 0.0  # Default value when calculating
         realtime_str = f"{YELLOW}Calculating...{RESET}"
         audio_str = ""
 
@@ -86,9 +87,19 @@ def log_chunk_progress(i, total_chunks, start_time, total_audio_duration=0.0):
 
     print(progress_msg)
     sys.stdout.flush()  # Force immediate output
+    
+    # Create clean status message for GUI (without ANSI color codes)
+    realtime_display = f"{actual_realtime:.2f}x" if actual_realtime > 0 else "Calculating..."
+    clean_status = (f"Elapsed: {fmt(elapsed)} | ETA: {fmt(eta)} | Remaining: {fmt(remaining)} | "
+                   f"Realtime: {realtime_display} | VRAM: {allocated:.1f}GB" +
+                   (f" | Audio: {fmt(total_audio_duration)}" if total_audio_duration > 0 else ""))
+    
+    # Emit status to GUI if callback is available
+    if hasattr(log_chunk_progress, '_status_callback') and log_chunk_progress._status_callback:
+        log_chunk_progress._status_callback(clean_status)
 
     # Also log to file for debugging
-    realtime_log = actual_realtime if total_audio_duration > 0 else "N/A"
+    realtime_log = f"{actual_realtime:.2f}x" if actual_realtime > 0 else "N/A"
     logging.info(f"Progress: Chunk {i+1}/{total_chunks}, Elapsed: {fmt(elapsed)}, "
                 f"ETA: {fmt(eta)}, Realtime: {realtime_log}, "
                 f"Audio Duration: {fmt(total_audio_duration)}, VRAM: {allocated:.1f}GB")

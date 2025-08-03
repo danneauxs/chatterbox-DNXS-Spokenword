@@ -16,9 +16,148 @@ from modules.file_manager import (
 )
 from modules.audio_processor import get_wav_duration
 from modules.progress_tracker import log_console, log_run
+import subprocess
+import shutil
+
+def combine_audio_for_book(book_path_str, voice_name=None):
+    """Combine audio chunks for a specific book (GUI-friendly version)"""
+    from pathlib import Path
+    book_path = Path(book_path_str)
+    
+    print(f"\n{CYAN}🔗 Combining Audio Chunks for: {book_path.name}{RESET}")
+    print("=" * 60)
+    
+    # Setup paths
+    tts_dir = book_path / "TTS"
+    audio_chunks_dir = tts_dir / "audio_chunks"
+
+    if not audio_chunks_dir.exists():
+        print(f"{RED}❌ No audio_chunks folder found in {book_path}{RESET}")
+        print(f"💡 Make sure this book has been processed with TTS generation first.")
+        return False
+
+    # Find audio chunks
+    chunk_paths = get_audio_files_in_directory(audio_chunks_dir)
+
+    if not chunk_paths:
+        print(f"{RED}❌ No chunk_*.wav files found in {audio_chunks_dir}{RESET}")
+        print(f"💡 Expected files like: chunk_00001.wav, chunk_00002.wav, etc.")
+        return False
+
+    print(f"\n📦 Found {GREEN}{len(chunk_paths)}{RESET} audio chunks")
+
+    # Verify chunk sequence
+    missing_chunks = verify_chunk_sequence(chunk_paths)
+    if missing_chunks:
+        print(f"\n⚠️ {YELLOW}Warning: Missing chunks detected:{RESET}")
+        for chunk_num in missing_chunks[:10]:  # Show first 10 missing
+            print(f"   Missing: chunk_{chunk_num:05}.wav")
+        if len(missing_chunks) > 10:
+            print(f"   ... and {len(missing_chunks) - 10} more")
+        print(f"{YELLOW}🔄 Continuing with available chunks for GUI operation...{RESET}")
+
+    # Display chunk info
+    total_duration = sum(get_wav_duration(chunk_path) for chunk_path in chunk_paths)
+    duration_str = str(timedelta(seconds=int(total_duration)))
+
+    print(f"\n📊 Chunk Analysis:")
+    print(f"   Total Chunks: {GREEN}{len(chunk_paths)}{RESET}")
+    print(f"   Total Duration: {GREEN}{duration_str}{RESET}")
+    print(f"   Average Chunk: {GREEN}{total_duration/len(chunk_paths):.1f}s{RESET}")
+
+    # Perform the actual combine operation
+    return _perform_combine_operation(book_path, chunk_paths, total_duration, voice_name)
+
+def _perform_combine_operation(book_path, chunk_paths, total_duration, voice_name=None):
+    """Perform the actual audio combining operation"""
+    import time
+    from datetime import timedelta
+    
+    basename = book_path.name
+    
+    # Determine file naming based on voice
+    if voice_name:
+        file_suffix = f" [{voice_name}]"
+    else:
+        file_suffix = "_combined"
+    
+    # Start timing
+    start_time = time.time()
+
+    # Create concat file and combine
+    print(f"\n🔗 Combining audio chunks...")
+    combined_wav_path = book_path / f"{basename}{file_suffix}.wav"
+
+    try:
+        combine_audio_chunks(chunk_paths, combined_wav_path)
+        print(f"✅ Combined WAV created: {combined_wav_path.name}")
+    except Exception as e:
+        print(f"{RED}❌ Failed to combine chunks: {e}{RESET}")
+        return False
+
+    # Find metadata files
+    text_book_dir = TEXT_INPUT_ROOT / basename
+    book_files = find_book_files(text_book_dir)
+    text_files, cover_file, nfo_file = book_files['text'], book_files['cover'], book_files['nfo']
+
+    if not cover_file:
+        print(f"⚠️ {YELLOW}No cover image found in {text_book_dir}{RESET}")
+    else:
+        print(f"📸 Using cover: {cover_file.name}")
+
+    if not nfo_file:
+        print(f"⚠️ {YELLOW}No book.nfo metadata found in {text_book_dir}{RESET}")
+    else:
+        print(f"📝 Using metadata: {nfo_file.name}")
+
+    # M4B conversion
+    print(f"\n📱 Converting to M4B audiobook...")
+    temp_m4b_path = book_path / "temp_output.m4b"
+    final_m4b_path = book_path / f"{basename}{file_suffix}.m4b"
+
+    try:
+        convert_to_m4b(combined_wav_path, temp_m4b_path)
+        add_metadata_to_m4b(temp_m4b_path, final_m4b_path, cover_file, nfo_file)
+        print(f"✅ M4B audiobook created: {final_m4b_path.name}")
+    except Exception as e:
+        print(f"{RED}❌ Failed to create M4B: {e}{RESET}")
+        return False
+
+    # Calculate final timing
+    elapsed_total = time.time() - start_time
+    elapsed_td = timedelta(seconds=int(elapsed_total))
+
+    # Verify final file
+    if final_m4b_path.exists():
+        final_size = final_m4b_path.stat().st_size / (1024 * 1024)  # MB
+        print(f"📦 Final file size: {GREEN}{final_size:.1f} MB{RESET}")
+        
+        # Calculate efficiency
+        realtime_factor = total_duration / elapsed_total if elapsed_total > 0 else 0
+        duration_str = str(timedelta(seconds=int(total_duration)))
+        
+        print(f"\n🎉 {GREEN}Combine completed successfully!{RESET}")
+        print(f"📊 Final Statistics:")
+        print(f"   Audio Duration: {GREEN}{duration_str}{RESET}")
+        print(f"   Processing Time: {GREEN}{elapsed_td}{RESET}")
+        print(f"   Realtime Factor: {GREEN}{realtime_factor:.2f}x{RESET}")
+        print(f"   Output Location: {GREEN}{final_m4b_path}{RESET}")
+        
+        # Clean up temp files
+        try:
+            if temp_m4b_path.exists():
+                temp_m4b_path.unlink()
+                print(f"🧹 Cleaned up temporary file: {temp_m4b_path.name}")
+        except Exception as e:
+            print(f"⚠️ Could not clean up temp file: {e}")
+            
+        return True
+    else:
+        print(f"{RED}❌ Final M4B file was not created successfully{RESET}")
+        return False
 
 def run_combine_only_mode():
-    """Combine existing chunks into audiobook"""
+    """Combine existing chunks into audiobook (CLI version)"""
     print(f"\n{CYAN}🔗 Combine-Only Mode: Assembling Existing Audio Chunks{RESET}")
     print("=" * 60)
 
@@ -108,91 +247,13 @@ def run_combine_only_mode():
     print(f"   Total Duration: {GREEN}{duration_str}{RESET}")
     print(f"   Average Chunk: {GREEN}{total_duration/len(chunk_paths):.1f}s{RESET}")
 
-    # Start timing
-    start_time = time.time()
-
-    # Create concat file and combine
-    print(f"\n🔗 Combining audio chunks...")
-    combined_wav_path = selected_book / f"{basename}_combined.wav"
-
-    try:
-        combine_audio_chunks(chunk_paths, combined_wav_path)
-        print(f"✅ Combined WAV created: {combined_wav_path.name}")
-    except Exception as e:
-        print(f"{RED}❌ Failed to combine chunks: {e}{RESET}")
-        return None
-
-    # Find metadata files
-    text_book_dir = TEXT_INPUT_ROOT / basename
-    book_files = find_book_files(text_book_dir)
-    text_files, cover_file, nfo_file = book_files['text'], book_files['cover'], book_files['nfo']
-
-    if not cover_file:
-        print(f"⚠️ {YELLOW}No cover image found in {text_book_dir}{RESET}")
+    # Use the shared combine operation (CLI doesn't pass voice name)
+    success = _perform_combine_operation(selected_book, chunk_paths, total_duration)
+    
+    if success:
+        return selected_book / f"{basename}_combined.m4b"
     else:
-        print(f"📸 Using cover: {cover_file.name}")
-
-    if not nfo_file:
-        print(f"⚠️ {YELLOW}No book.nfo metadata found in {text_book_dir}{RESET}")
-    else:
-        print(f"📝 Using metadata: {nfo_file.name}")
-
-    # M4B conversion
-    print(f"\n📱 Converting to M4B audiobook...")
-    temp_m4b_path = selected_book / "temp_output.m4b"
-    final_m4b_path = selected_book / f"{basename}_combined.m4b"
-
-    try:
-        convert_to_m4b(combined_wav_path, temp_m4b_path)
-        add_metadata_to_m4b(temp_m4b_path, final_m4b_path, cover_file, nfo_file)
-        print(f"✅ M4B audiobook created: {final_m4b_path.name}")
-    except Exception as e:
-        print(f"{RED}❌ Failed to create M4B: {e}{RESET}")
         return None
-
-    # Calculate final timing
-    elapsed_total = time.time() - start_time
-    elapsed_td = timedelta(seconds=int(elapsed_total))
-
-    # Verify final file
-    if final_m4b_path.exists():
-        final_size = final_m4b_path.stat().st_size / (1024 * 1024)  # MB
-        print(f"📦 Final file size: {GREEN}{final_size:.1f} MB{RESET}")
-
-    # Calculate processing speed
-    processing_ratio = total_duration / elapsed_total if elapsed_total > 0 else 0
-
-    # Summary
-    print(f"\n🎉 {GREEN}Combine Operation Complete!{RESET}")
-    print(f"📊 Summary:")
-    print(f"   Processing Time: {CYAN}{elapsed_td}{RESET}")
-    print(f"   Audio Duration: {GREEN}{duration_str}{RESET}")
-    print(f"   Processing Speed: {YELLOW}{processing_ratio:.1f}x realtime{RESET}")
-    print(f"   Final M4B: {BOLD}{final_m4b_path}{RESET}")
-
-    # Write operation log
-    log_lines = [
-        f"Combine-Only Operation: {basename}",
-        f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Chunks Combined: {len(chunk_paths)}",
-        f"Total Duration: {duration_str}",
-        f"Processing Time: {elapsed_td}",
-        f"Processing Speed: {processing_ratio:.1f}x realtime",
-        f"Output WAV: {combined_wav_path}",
-        f"Output M4B: {final_m4b_path}",
-        f"Cover Used: {cover_file.name if cover_file else 'None'}",
-        f"Metadata Used: {nfo_file.name if nfo_file else 'None'}",
-        "--- Normalization Settings ---",
-        f"Normalization Enabled: {ENABLE_NORMALIZATION}",
-        f"Normalization Type: {NORMALIZATION_TYPE}",
-        f"Target Peak dB: {TARGET_PEAK_DB}",
-        f"Target LUFS: {TARGET_LUFS}"
-    ]
-
-    log_run("\n".join(log_lines), selected_book / "combine_operation.log")
-    print(f"📝 Operation log: {selected_book / 'combine_operation.log'}")
-
-    return final_m4b_path
 
 def verify_chunk_sequence(chunk_paths):
     """Verify chunk sequence and return missing chunk numbers"""
@@ -278,6 +339,50 @@ def quick_combine(book_name):
 
     print(f"✅ Quick combine complete: {final_m4b_path}")
     return final_m4b_path
+
+def apply_playback_speed_to_m4b(input_m4b_path, output_m4b_path, speed_factor):
+    """Apply playback speed adjustment to M4B file using ffmpeg"""
+    try:
+        print(f"🔄 Applying {speed_factor}x speed to {Path(input_m4b_path).name}")
+        
+        # Check if ffmpeg is available
+        if not shutil.which('ffmpeg'):
+            print("❌ ffmpeg not found - required for M4B speed adjustment")
+            return False
+        
+        # Build ffmpeg command for speed adjustment
+        cmd = [
+            'ffmpeg', '-y',  # -y to overwrite output file
+            '-i', str(input_m4b_path),
+            '-filter:a', f'atempo={speed_factor}',  # Audio speed adjustment
+            '-c:a', 'aac',  # Re-encode to AAC for M4B compatibility
+            '-b:a', '64k',  # Audio bitrate
+            str(output_m4b_path)
+        ]
+        
+        print(f"Running: {' '.join(cmd)}")
+        
+        # Execute ffmpeg command
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        if result.returncode == 0:
+            print(f"✅ Successfully created speed-adjusted M4B: {Path(output_m4b_path).name}")
+            return True
+        else:
+            print(f"❌ ffmpeg failed: {result.stderr}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print("❌ M4B speed adjustment timed out")
+        return False
+    except Exception as e:
+        print(f"❌ Error adjusting M4B speed: {e}")
+        return False
 
 if __name__ == "__main__":
     import sys

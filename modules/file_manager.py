@@ -63,14 +63,17 @@ def run_ffmpeg(cmd):
 # M4B CONVERSION WITH NORMALIZATION
 # ============================================================================
 
-def convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, target_db=-3.0):
+def convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, target_db=-3.0, custom_speed=None):
     """Convert WAV to M4B with peak normalization"""
     print("🚀 Converting to m4b with peak normalization...")
 
     # Build audio filter chain
+    speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
     audio_filters = [f"loudnorm=I=-16:TP={target_db}:LRA=11"]
-    if ATEMPO_SPEED != 1.0:
-        audio_filters.append(f"atempo={ATEMPO_SPEED}")
+    if speed_to_use != 1.0:
+        audio_filters.append(f"atempo={speed_to_use}")
+    
+    print(f"🚀 Converting to m4b with peak normalization and speed {speed_to_use}x...")
     
     cmd = [
         "ffmpeg", "-y",
@@ -96,7 +99,7 @@ def convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, target_db=-3
     process.wait()
     print("\n✅ Conversion with normalization complete.")
 
-def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path):
+def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_speed=None):
     """Convert WAV to M4B with two-pass loudness normalization"""
     import json
 
@@ -130,10 +133,11 @@ def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path):
     # Step 2: Apply normalization with measured values
     print("🔧 Applying normalization...")
     
-    # Build audio filter chain
+    # Build audio filter chain  
+    speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
     audio_filters = [f"loudnorm=I=-16:TP=-1.5:LRA=11:measured_I={loudness_data['input_i']}:measured_LRA={loudness_data['input_lra']}:measured_TP={loudness_data['input_tp']}:measured_thresh={loudness_data['input_thresh']}:offset={loudness_data['target_offset']}:linear=true:print_format=summary"]
-    if ATEMPO_SPEED != 1.0:
-        audio_filters.append(f"atempo={ATEMPO_SPEED}")
+    if speed_to_use != 1.0:
+        audio_filters.append(f"atempo={speed_to_use}")
     
     cmd = [
         "ffmpeg", "-y",
@@ -159,14 +163,15 @@ def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path):
     process.wait()
     print("\n✅ Two-pass normalization complete.")
 
-def convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, target_db=-6.0):
+def convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, target_db=-6.0, custom_speed=None):
     """Convert WAV to M4B with simple peak normalization"""
     print("🚀 Converting to m4b with simple normalization...")
 
     # Build audio filter chain
+    speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
     audio_filters = [f"volume={target_db}dB"]
-    if ATEMPO_SPEED != 1.0:
-        audio_filters.append(f"atempo={ATEMPO_SPEED}")
+    if speed_to_use != 1.0:
+        audio_filters.append(f"atempo={speed_to_use}")
 
     cmd = [
         "ffmpeg", "-y",
@@ -192,16 +197,19 @@ def convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, target_db=
     process.wait()
     print("\n✅ Simple normalization complete.")
 
-def convert_to_m4b(wav_path, temp_m4b_path):
-    """Convert WAV to M4B with configurable normalization"""
+def convert_to_m4b(wav_path, temp_m4b_path, custom_speed=None):
+    """Convert WAV to M4B with configurable normalization and optional custom speed"""
+    # Determine speed to use (custom speed overrides config)
+    speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
+    
     if not ENABLE_NORMALIZATION or NORMALIZATION_TYPE == "none":
         # Original function without normalization
-        print("🚀 Converting to m4b...")
+        print(f"🚀 Converting to m4b with speed {speed_to_use}x...")
 
         # Build audio filter for atempo if needed
         audio_filter = []
-        if ATEMPO_SPEED != 1.0:
-            audio_filter = ["-filter:a", f"atempo={ATEMPO_SPEED}"]
+        if speed_to_use != 1.0:
+            audio_filter = ["-filter:a", f"atempo={speed_to_use}"]
 
         cmd = [
             "ffmpeg", "-y",
@@ -213,22 +221,22 @@ def convert_to_m4b(wav_path, temp_m4b_path):
 
     elif NORMALIZATION_TYPE == "loudness":
         # EBU R128 loudness normalization (recommended for audiobooks)
-        return convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path)
+        return convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_speed)
 
     elif NORMALIZATION_TYPE == "peak":
         # Peak normalization
-        return convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB)
+        return convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB, custom_speed)
 
     elif NORMALIZATION_TYPE == "simple":
         # Simple volume adjustment
-        return convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB)
+        return convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB, custom_speed)
 
     else:
         # Fallback to no normalization
         # Build audio filter for atempo if needed
         audio_filter = []
-        if ATEMPO_SPEED != 1.0:
-            audio_filter = ["-filter:a", f"atempo={ATEMPO_SPEED}"]
+        if speed_to_use != 1.0:
+            audio_filter = ["-filter:a", f"atempo={speed_to_use}"]
 
         cmd = [
             "ffmpeg", "-y",

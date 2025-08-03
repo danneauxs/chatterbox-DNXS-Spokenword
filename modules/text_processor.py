@@ -172,7 +172,7 @@ def smart_punctuate(text):
         if not stripped:
             out.append("")  # Keep the blank line
         # Process non-empty lines
-        elif not re.search(r'[.!?]$', stripped):
+        elif not re.search(r'[.!?]$', stripped) and not re.search(r'[.!?]["\']$', stripped):
             out.append(stripped + ".")
         else:
             out.append(stripped)
@@ -186,6 +186,18 @@ def smart_punctuate(text):
     # Remove problematic formatting
     result = re.sub(r'\*\*([^*]+)\*\*', r'\1', result)  # Remove bold markdown
     result = re.sub(r'_{2,}', '', result)  # Remove underlines
+    
+    # Fix any escaped quotes that might appear in the text
+    result = result.replace('\\"', '"').replace("\\'", "'")
+    
+    # Additional quote normalization to prevent recurring dialogue corruption
+    result = re.sub(r'(["\'])\s*,\s*(["\'])', r'\1, \2', result)  # Fix quote spacing around commas
+    result = re.sub(r'(["\'])\s*\.\s*(["\'])', r'\1. \2', result)  # Fix quote spacing around periods
+    result = re.sub(r'(["\'])\s*([,.])\s*(["\'])\s*([,.])', r'\1\2 \3', result)  # Remove duplicate punctuation
+    
+    # Debug logging for dialogue patterns
+    if '"' in result and ('replied' in result or 'said' in result):
+        print(f"🗣️ DEBUG: Dialogue detected in smart_punctuate: {result[:100]}...")
 
     return result
 
@@ -284,22 +296,50 @@ def sentence_chunk_text(text, max_words=MAX_CHUNK_WORDS, min_words=MIN_CHUNK_WOR
             all_processed_chunks.append((paragraph, True))
             continue
 
-        # Split paragraph into sentences
-        sentence_end_re = re.compile(r'([.!?][\"\'\)]*\s+)')
+        # Dialogue-aware sentence splitting with word limit protection
         sentences = []
-        start_index = 0
-
-        for match in sentence_end_re.finditer(paragraph):
-            end_index = match.end()
-            sentence = paragraph[start_index:end_index].strip()
+        
+        # First pass: find natural sentence boundaries outside quotes
+        sentence_boundaries = []
+        in_quotes = False
+        quote_char = None
+        
+        for i, char in enumerate(paragraph):
+            if char in ['"', "'"]:
+                if not in_quotes:
+                    in_quotes = True
+                    quote_char = char
+                elif char == quote_char:
+                    in_quotes = False
+                    quote_char = None
+            elif char in '.!?' and not in_quotes:
+                # Check if this is followed by whitespace or end of string
+                if i + 1 >= len(paragraph) or paragraph[i + 1:i + 2].isspace():
+                    sentence_boundaries.append(i + 1)
+        
+        # Split at natural boundaries first
+        start = 0
+        for boundary in sentence_boundaries:
+            sentence = paragraph[start:boundary].strip()
             if sentence:
-                sentences.append(sentence)
-            start_index = end_index
-
-        if start_index < len(paragraph):
-            remainder = paragraph[start_index:].strip()
-            if remainder:
-                sentences.append(remainder)
+                # Always check if sentence needs splitting regardless of length
+                # This ensures long sentences are properly handled
+                if len(sentence.split()) > max_words:
+                    sub_sentences = _split_long_dialogue(sentence, max_words)
+                    sentences.extend(sub_sentences)
+                else:
+                    sentences.append(sentence)
+            start = boundary
+        
+        # Handle any remaining text
+        if start < len(paragraph):
+            remaining = paragraph[start:].strip()
+            if remaining:
+                if len(remaining.split()) > max_words:
+                    sub_sentences = _split_long_dialogue(remaining, max_words)
+                    sentences.extend(sub_sentences)
+                else:
+                    sentences.append(remaining)
 
         # Process sentences within this paragraph
         paragraph_chunks = []
@@ -569,6 +609,102 @@ def detect_content_boundaries(chunk_text, chunk_index, all_chunks, is_paragraph_
         boundary_type = detect_punctuation_boundary(chunk_text)
 
     return boundary_type
+
+def _split_long_dialogue(sentence, max_words, recursion_depth=0):
+    """
+    Split long dialogue sections that exceed word limits.
+    Tries to break at natural points: attribution, internal punctuation, then word boundaries.
+    """
+    # Prevent infinite recursion
+    if recursion_depth > 3:
+        # Force word boundary split if recursion gets too deep
+        words = sentence.split()
+        sentences = []
+        start = 0
+        while start < len(words):
+            end = min(start + max_words, len(words))
+            chunk_words = words[start:end]
+            sentences.append(' '.join(chunk_words))
+            start = end
+        return sentences
+    
+    words = sentence.split()
+    if len(words) <= max_words:
+        return [sentence]
+    
+    sentences = []
+    
+    # Strategy 1: Break at dialogue attribution (he said, she replied, etc.)
+    attribution_pattern = r'(\s+(?:he|she|I|they|[A-Z][a-z]+)\s+(?:said|replied|asked|shouted|whispered|continued|added|interrupted)[^.!?]*?[.!?]?\s*)'
+    attribution_matches = list(re.finditer(attribution_pattern, sentence, re.IGNORECASE))
+    
+    if attribution_matches:
+        start = 0
+        for match in attribution_matches:
+            # Check if breaking here keeps chunks under limit
+            before_attr = sentence[start:match.end()].strip()
+            if before_attr and len(before_attr.split()) <= max_words:
+                sentences.append(before_attr)
+                start = match.end()
+        
+        # Add remaining text
+        if start < len(sentence):
+            remaining = sentence[start:].strip()
+            if remaining:
+                if len(remaining.split()) > max_words:
+                    # Recursively split if still too long, but with depth tracking
+                    sentences.extend(_split_long_dialogue(remaining, max_words, recursion_depth + 1))
+                else:
+                    sentences.append(remaining)
+        
+        if sentences:  # If we successfully split, return result
+            return sentences
+    
+    # Strategy 2: Break at internal punctuation (commas, semicolons within quotes)
+    punct_pattern = r'([,;:]\s+)'
+    parts = re.split(punct_pattern, sentence)
+    
+    current_chunk = ""
+    sentences = []
+    for i, part in enumerate(parts):
+        test_chunk = current_chunk + part
+        if len(test_chunk.split()) > max_words and current_chunk:
+            sentences.append(current_chunk.strip())
+            current_chunk = part
+        else:
+            current_chunk = test_chunk
+    
+    if current_chunk.strip():
+        sentences.append(current_chunk.strip())
+    
+    # Check if any resulting chunk is still too long and needs further splitting
+    final_sentences = []
+    for chunk in sentences:
+        if len(chunk.split()) > max_words:
+            # Split oversized chunks using word boundaries
+            chunk_words = chunk.split()
+            start = 0
+            while start < len(chunk_words):
+                end = min(start + max_words, len(chunk_words))
+                sub_chunk_words = chunk_words[start:end]
+                final_sentences.append(' '.join(sub_chunk_words))
+                start = end
+        else:
+            final_sentences.append(chunk)
+    
+    if len(final_sentences) > 1:  # If we successfully split, return result
+        return final_sentences
+    
+    # Strategy 3: Force break at word boundaries (guaranteed to work)
+    sentences = []
+    start = 0
+    while start < len(words):
+        end = min(start + max_words, len(words))
+        chunk_words = words[start:end]
+        sentences.append(' '.join(chunk_words))
+        start = end
+    
+    return sentences
 
 # ============================================================================
 # UTILITY FUNCTIONS

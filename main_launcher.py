@@ -46,23 +46,23 @@ def prepare_chunk_file():
     """Unified chunk prep that calls the centralized chunk generation function."""
     print("\n📝 Prepare Text File for Chunking")
     print("=" * 40)
-    
+
     # Show available books from Text_Input directory
     text_input_dir = Path(TEXT_INPUT_ROOT)
     if not text_input_dir.exists():
         print(f"❌ Text_Input directory not found: {TEXT_INPUT_ROOT}")
         return
-        
+
     book_dirs = [d for d in text_input_dir.iterdir() if d.is_dir()]
     if not book_dirs:
         print(f"❌ No book directories found in {TEXT_INPUT_ROOT}")
         return
-    
+
     print("\n📚 Available books:")
     for i, book_dir in enumerate(book_dirs):
         txt_files = list(book_dir.glob("*.txt"))
         print(f"  [{i}] {book_dir.name} ({len(txt_files)} .txt file(s))")
-    
+
     # Select book
     while True:
         try:
@@ -76,13 +76,13 @@ def prepare_chunk_file():
         except (ValueError, EOFError, KeyboardInterrupt):
             print("❌ Invalid selection or cancelled")
             return
-    
+
     # Find text files in selected book
     txt_files = list(selected_book_dir.glob("*.txt"))
     if not txt_files:
         print(f"❌ No .txt files found in {selected_book_dir.name}")
         return
-    
+
     # Select text file if multiple exist
     if len(txt_files) == 1:
         selected_txt_file = txt_files[0]
@@ -91,7 +91,7 @@ def prepare_chunk_file():
         print(f"\n📄 Multiple .txt files found in {selected_book_dir.name}:")
         for i, txt_file in enumerate(txt_files):
             print(f"  [{i}] {txt_file.name}")
-        
+
         while True:
             try:
                 choice = input(f"\nSelect text file [0-{len(txt_files)-1}]: ").strip()
@@ -104,11 +104,11 @@ def prepare_chunk_file():
             except (ValueError, EOFError, KeyboardInterrupt):
                 print("❌ Invalid selection or cancelled")
                 return
-    
+
     # Get TTS parameters for JSON generation (optional - uses config defaults if skipped)
     print(f"\n⚙️ TTS Parameters (for VADER sentiment analysis base values)")
     print(f"Press Enter to use config defaults, or enter custom values:")
-    
+
     def get_float_input(prompt, default):
         while True:
             try:
@@ -118,7 +118,7 @@ def prepare_chunk_file():
                 return float(value)
             except ValueError:
                 print(f"❌ Invalid input. Please enter a valid number.")
-    
+
     def get_yes_no_input(prompt, default=True):
         while True:
             default_str = "Y/n" if default else "y/N"
@@ -131,15 +131,15 @@ def prepare_chunk_file():
                 return False
             else:
                 print(f"❌ Please enter 'y' for yes or 'n' for no.")
-    
+
     # VADER sentiment analysis option
     use_vader = get_yes_no_input("🎭 Use VADER sentiment analysis to adjust TTS params per chunk?", True)
-    
+
     if use_vader:
         print("✅ VADER enabled - TTS params will be adjusted based on chunk sentiment")
     else:
         print("❌ VADER disabled - TTS params will be fixed for all chunks")
-    
+
     user_tts_params = {
         'exaggeration': get_float_input("Exaggeration", DEFAULT_EXAGGERATION),
         'cfg_weight': get_float_input("CFG Weight", DEFAULT_CFG_WEIGHT),
@@ -154,7 +154,7 @@ def prepare_chunk_file():
 
     print(f"\n🔄 Processing: {selected_txt_file}")
     enriched_chunks = generate_enriched_chunks(selected_txt_file, text_output_dir, user_tts_params)
-    
+
     print(f"\n✅ Processing Complete!")
     print(f"📊 Generated {len(enriched_chunks)} chunks from: {selected_txt_file.name}")
     print(f"💾 Saved to:")
@@ -166,7 +166,7 @@ def prepare_chunk_file():
 
 def main_with_resume():
     """Modified main function that includes resume option"""
-    print(f"{RED}Enhanced ChatterboxTTS Batch Audiobook Generator\n{RESET}")
+    print(f"{RED}DNXS-Spokenword []ChatterboxTTS] Batch Audiobook Generator\n{RESET}")
 
     print("Select an action:")
     print(" 1. Convert a book (normal processing)")
@@ -214,18 +214,18 @@ def wrapper_main():
                 print("\n🔄 Resume Processing from Specific Chunk")
                 print("📋 The system will guide you through:")
                 print("   1. Book selection")
-                print("   2. Existing chunk analysis") 
+                print("   2. Existing chunk analysis")
                 print("   3. Resume point suggestion")
                 print("   4. Voice and parameter selection")
                 print()
-                
+
                 # Call the interactive resume function - it handles everything
                 result = resume_book_from_chunk(0)  # Will be overridden by interactive selection
                 if result:
                     print("✅ Resume operation completed successfully")
                 else:
                     print("❌ Resume operation was cancelled or failed")
-                
+
             except (EOFError, KeyboardInterrupt):
                 print("❌ Resume operation cancelled.")
         elif selected == 3:

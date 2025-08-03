@@ -101,8 +101,8 @@ def get_tts_params_for_chunk(chunk):
         'temperature': temperature
     }
 
-def synthesize_chunk(chunk, index, book_name, audio_dir, revision=False):
-    """Generate audio for a single chunk using original voice and TTS parameters"""
+def synthesize_chunk(chunk, index, book_name, audio_dir, revision=False, chunks_json_path=None, override_voice_name=None):
+    """Generate audio for a single chunk using specified or detected voice and TTS parameters"""
     filename = f"chunk_{index+1:05d}_rev.wav" if revision else f"chunk_{index+1:05d}.wav"
     out_path = Path(audio_dir) / filename
     
@@ -114,31 +114,32 @@ def synthesize_chunk(chunk, index, book_name, audio_dir, revision=False):
         print(f"🤖 Loading TTS model for chunk synthesis...")
         model = load_optimized_model(device)
         
-        # Find original voice used for this book
-        print(f"🔍 Finding original voice for book: {book_name}")
+        # Determine voice to use
+        if override_voice_name:
+            # Use explicitly provided voice
+            print(f"🎤 Using explicitly selected voice: {override_voice_name}")
+            voice_path = find_voice_file_by_name(override_voice_name)
+            voice_name = override_voice_name
+            detection_method = "user_selected"
+        else:
+            # Use enhanced voice detection
+            print(f"🔍 Detecting original voice for book: {book_name}")
+            from modules.voice_detector import detect_voice_for_book
+            
+            voice_name, voice_path, detection_method = detect_voice_for_book(book_name, chunks_json_path)
         
-        # Try to get voice from run log first
-        original_voice_name = get_original_voice_from_log(book_name)
-        
-        # Fallback to filename parsing
-        if not original_voice_name:
-            original_voice_name = get_original_voice_from_filename(book_name)
-        
-        # Find the voice file
-        voice_path = None
-        if original_voice_name:
-            voice_path = find_voice_file_by_name(original_voice_name)
-        
-        # Fallback to first available voice if original not found
+        # Fallback to first available voice if detection failed
         if not voice_path:
-            print(f"⚠️ Original voice not found, using first available voice")
+            print(f"⚠️ Voice not found, using first available voice")
             voice_files = list_voice_samples()
             if not voice_files:
                 print("❌ No voice samples found")
                 return None
             voice_path = voice_files[0]
+            voice_name = voice_path.stem
+            detection_method = "fallback_first_available"
         
-        print(f"🎤 Using voice: {voice_path.stem}")
+        print(f"🎤 Using voice: {voice_name} (method: {detection_method})")
         compatible_voice = ensure_voice_sample_compatibility(voice_path)
         
         # Get TTS parameters for this chunk

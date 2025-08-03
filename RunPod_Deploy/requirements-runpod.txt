@@ -1,5 +1,5 @@
-# ChatterboxTTS Requirements - Main file (works everywhere)
-# Complete dependency list for local development
+# ChatterboxTTS RunPod Requirements - No GUI dependencies
+# Streamlined for cloud deployment
 
 # Core ML and TTS - Essential
 torch==2.6.0
@@ -32,10 +32,6 @@ vaderSentiment>=3.3.0
 # Web interface - Gradio
 gradio>=4.0.0
 
-# GUI Support - Local development
-PyQt5>=5.15.0
-PyQt5-sip>=12.0.0
-
 # Progress and logging
 tqdm>=4.60.0
 
@@ -48,9 +44,6 @@ python-dotenv>=1.0.0
 # Optional utilities
 requests>=2.25.0
 packaging>=21.0
-
-# Development tools
-pre-commit>=2.0.0
 
 # Core ChatterboxTTS model dependencies
 resemble-perth>=1.0.1

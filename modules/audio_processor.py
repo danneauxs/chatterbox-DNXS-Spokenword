@@ -13,6 +13,14 @@ from pathlib import Path
 from pydub import AudioSegment, silence
 from config.config import *
 
+# Enhanced imports for spectral analysis
+try:
+    import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    LIBROSA_AVAILABLE = False
+    logging.warning("librosa not available - enhanced spectral analysis disabled")
+
 # ============================================================================
 # AUDIO QUALITY DETECTION
 # ============================================================================
@@ -126,6 +134,259 @@ def has_mid_energy_drop(wav_tensor, sr, window_ms=250, threshold_ratio=None):
             drop_sequence = 0
 
     return False
+
+def detect_spectral_artifacts(audio_path_or_segment, use_mfcc=True):
+    """
+    Enhanced spectral anomaly detection using MFCC analysis.
+
+    Args:
+        audio_path_or_segment: Path to audio file or AudioSegment object
+        use_mfcc: Whether to use MFCC-based analysis (requires librosa)
+
+    Returns:
+        float: Quality score (0.0-1.0, higher is better)
+    """
+    try:
+        # Load audio data
+        if isinstance(audio_path_or_segment, (str, Path)):
+            y, sr = sf.read(str(audio_path_or_segment))
+        elif isinstance(audio_path_or_segment, AudioSegment):
+            # Convert AudioSegment to numpy array
+            samples = np.array(audio_path_or_segment.get_array_of_samples())
+            if audio_path_or_segment.channels == 2:
+                samples = samples.reshape((-1, 2)).mean(axis=1)
+            y = samples.astype(np.float32) / audio_path_or_segment.max_possible_amplitude
+            sr = audio_path_or_segment.frame_rate
+        else:
+            return 0.5  # Unknown format, neutral score
+
+        # Ensure mono
+        if len(y.shape) > 1:
+            y = y[:, 0]
+
+        # Basic energy-based anomaly detection (always available)
+        energy = np.abs(y)
+        energy_variance = np.var(energy)
+
+        # Simple threshold-based scoring
+        basic_score = 1.0 - min(energy_variance / 0.1, 1.0)
+
+        # Enhanced MFCC-based detection if librosa is available
+        if use_mfcc and LIBROSA_AVAILABLE and ENABLE_MFCC_VALIDATION:
+            try:
+                # Compute MFCC features
+                mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+
+                # Calculate spectral variance across time
+                mfcc_variance = np.var(mfccs, axis=1)
+                max_variance_jump = np.max(np.abs(np.diff(mfcc_variance)))
+
+                # Normalize and score
+                mfcc_score = 1.0 - min(max_variance_jump / SPECTRAL_VARIANCE_LIMIT, 1.0)
+
+                # Combine scores (weighted average)
+                final_score = 0.6 * mfcc_score + 0.4 * basic_score
+
+            except Exception as e:
+                logging.debug(f"MFCC analysis failed: {e}")
+                final_score = basic_score
+        else:
+            final_score = basic_score
+
+        return max(0.0, min(1.0, final_score))
+
+    except Exception as e:
+        logging.error(f"Spectral artifact detection failed: {e}")
+        return 0.5  # Neutral score on failure
+
+def evaluate_chunk_quality(audio_path_or_segment, reference_text=None, include_spectral=True, asr_model=None):
+    """
+    Composite quality evaluation for a single audio chunk.
+    Acts as a clearinghouse - only runs individual checks when they are specifically enabled.
+
+    Args:
+        audio_path_or_segment: Path to audio file or AudioSegment object
+        reference_text: Original text for comparison (optional)
+        include_spectral: Whether to include spectral analysis
+        asr_model: Pre-loaded ASR model to avoid duplicate loading
+
+    Returns:
+        float: Composite quality score (0.0-1.0)
+    """
+    # Skip all validation if output validation clearinghouse is disabled
+    if not ENABLE_OUTPUT_VALIDATION:
+        return 1.0  # Pass all chunks if validation is completely disabled
+    
+    scores = []
+
+    # Spectral anomaly detection (only if MFCC validation is enabled)
+    if include_spectral and ENABLE_MFCC_VALIDATION:
+        spectral_score = detect_spectral_artifacts(audio_path_or_segment)
+        scores.append(spectral_score)
+
+    # ASR text validation (only if ASR is enabled AND reference text provided)
+    if reference_text and ENABLE_ASR:
+        text_validation_score = validate_output_matches_input(audio_path_or_segment, reference_text, asr_model)
+        scores.append(text_validation_score)
+
+    # Basic audio health (if it's a file path)
+    if isinstance(audio_path_or_segment, (str, Path)):
+        try:
+            health_result = check_audio_health(audio_path_or_segment)
+            # Convert health result to score (assuming False = good, True = bad)
+            health_score = 0.2 if health_result else 0.8
+            scores.append(health_score)
+        except Exception:
+            scores.append(0.5)  # Neutral score on failure
+
+    # Return average of all scores
+    return sum(scores) / len(scores) if scores else 0.5
+
+def validate_output_matches_input(audio_path_or_segment, reference_text, asr_model=None):
+    """
+    Validate that TTS audio output matches the input text using ASR transcription.
+
+    Args:
+        audio_path_or_segment: Path to audio file or AudioSegment object
+        reference_text: Original input text that should have been synthesized
+        asr_model: Optional pre-loaded ASR model (will load whisper if None)
+
+    Returns:
+        float: Validation score (0.0-1.0, higher means better match)
+    """
+    try:
+        # Convert AudioSegment to temporary file if needed
+        temp_file = None
+        if isinstance(audio_path_or_segment, AudioSegment):
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            audio_path_or_segment.export(temp_file.name, format='wav')
+            audio_path = temp_file.name
+        else:
+            audio_path = str(audio_path_or_segment)
+
+        # Load ASR model if not provided
+        if asr_model is None:
+            try:
+                from modules.asr_manager import load_asr_model_adaptive
+                # Use adaptive manager for fallback ASR loading
+                asr_model, _ = load_asr_model_adaptive()
+                if asr_model is None:
+                    logging.warning("ASR model loading failed in audio processor")
+                    return 0.8  # Neutral score if ASR unavailable
+            except ImportError:
+                logging.warning("Whisper not available for output validation")
+                return 0.8  # Neutral score if ASR unavailable
+
+        # Transcribe the audio
+        result = asr_model.transcribe(audio_path)
+        transcribed_text = result.get("text", "").strip()
+
+        # Clean up temporary file
+        if temp_file:
+            import os
+            os.unlink(temp_file.name)
+
+        # Calculate text similarity using F1 score
+        similarity_score = calculate_text_similarity(reference_text, transcribed_text)
+
+        # Log significant mismatches for debugging
+        if similarity_score < OUTPUT_VALIDATION_THRESHOLD:
+            logging.warning(f"🔍 Output validation failed (score: {similarity_score:.3f})")
+            logging.warning(f"   Expected: {reference_text}")
+            logging.warning(f"   Got:      {transcribed_text}")
+
+        return similarity_score
+
+    except Exception as e:
+        logging.error(f"Output validation failed: {e}")
+        return 0.8  # Use neutral-good score to avoid regeneration on ASR errors
+
+def calculate_text_similarity(text1, text2):
+    """
+    Calculate similarity between two texts using word-level F1 score.
+
+    Args:
+        text1: Reference text
+        text2: Comparison text
+
+    Returns:
+        float: F1 similarity score (0.0-1.0)
+    """
+    # Normalize texts (lowercase, remove punctuation, split into words)
+    import re
+
+    def normalize_text(text):
+        # Convert to lowercase and remove punctuation
+        text = re.sub(r'[^\w\s]', '', text.lower())
+        # Split into words and filter empty strings
+        return [word for word in text.split() if word]
+
+    words1 = set(normalize_text(text1))
+    words2 = set(normalize_text(text2))
+
+    if not words1 and not words2:
+        return 1.0  # Both empty
+
+    if not words1 or not words2:
+        return 0.0  # One empty, one not
+
+    # Calculate precision, recall, and F1
+    intersection = words1.intersection(words2)
+    precision = len(intersection) / len(words2) if words2 else 0
+    recall = len(intersection) / len(words1) if words1 else 0
+
+    if precision + recall == 0:
+        return 0.0
+
+    f1_score = 2 * (precision * recall) / (precision + recall)
+    return f1_score
+
+def adjust_parameters_for_retry(params, quality_score, attempt_num):
+    """
+    Adjust TTS parameters for regeneration attempts.
+
+    Args:
+        params: Current TTS parameters dictionary
+        quality_score: Quality score from previous attempt (0.0-1.0)
+        attempt_num: Current attempt number (0-based)
+
+    Returns:
+        dict: Adjusted parameters
+    """
+    adjusted = params.copy()
+
+    # Adjustment strategy based on quality score and attempt number
+    if quality_score < 0.3:
+        # Very poor quality - more aggressive adjustments
+        temp_adj = REGEN_TEMPERATURE_ADJUSTMENT * 2
+        exag_adj = REGEN_EXAGGERATION_ADJUSTMENT * 2
+        cfg_adj = REGEN_CFG_ADJUSTMENT * 2
+    elif quality_score < 0.6:
+        # Moderate quality issues - standard adjustments
+        temp_adj = REGEN_TEMPERATURE_ADJUSTMENT
+        exag_adj = REGEN_EXAGGERATION_ADJUSTMENT
+        cfg_adj = REGEN_CFG_ADJUSTMENT
+    else:
+        # Minor quality issues - gentle adjustments
+        temp_adj = REGEN_TEMPERATURE_ADJUSTMENT * 0.5
+        exag_adj = REGEN_EXAGGERATION_ADJUSTMENT * 0.5
+        cfg_adj = REGEN_CFG_ADJUSTMENT * 0.5
+
+    # Apply adjustments based on attempt number
+    if attempt_num == 1:
+        # First retry: reduce temperature (less randomness)
+        adjusted['temperature'] = max(TTS_PARAM_MIN_TEMPERATURE,
+                                    adjusted['temperature'] - temp_adj)
+    elif attempt_num == 2:
+        # Second retry: adjust exaggeration (less emotion)
+        adjusted['exaggeration'] = max(TTS_PARAM_MIN_EXAGGERATION,
+                                     adjusted['exaggeration'] - exag_adj)
+        # Also increase cfg_weight (more faithful to text)
+        adjusted['cfg_weight'] = min(TTS_PARAM_MAX_CFG_WEIGHT,
+                                   adjusted['cfg_weight'] + cfg_adj)
+
+    return adjusted
 
 # ============================================================================
 # PROBLEMATIC CHUNK HANDLING
@@ -327,10 +588,10 @@ def smart_audio_validation_memory(audio_segment, sample_rate):
     # Basic validation - can be enhanced with hum detection later
     # For now, just return the audio as-is
     is_quarantined = False
-    
+
     # Could add memory-based hum detection here
     # is_quarantined = detect_hum_memory(audio_segment, sample_rate)
-    
+
     return audio_segment, is_quarantined
 
 def add_contextual_silence_memory(audio_segment, boundary_type):
@@ -341,7 +602,7 @@ def add_contextual_silence_memory(audio_segment, boundary_type):
         SILENCE_COMMA, SILENCE_SEMICOLON, SILENCE_COLON, SILENCE_PERIOD, SILENCE_QUESTION_MARK,
         SILENCE_EXCLAMATION, SILENCE_DASH, SILENCE_ELLIPSIS, SILENCE_QUOTE_END
     )
-    
+
     silence_durations = {
         # Structural boundaries
         "chapter_start": SILENCE_CHAPTER_START,
@@ -359,12 +620,12 @@ def add_contextual_silence_memory(audio_segment, boundary_type):
         "ellipsis": SILENCE_ELLIPSIS,
         "quote_end": SILENCE_QUOTE_END,
     }
-    
+
     if boundary_type in silence_durations:
         duration = silence_durations[boundary_type]
         silence_segment = AudioSegment.silent(duration=duration)
         return audio_segment + silence_segment
-    
+
     return audio_segment
 
 def smart_fade_out(wav_path, silence_thresh_db=-40, min_silence_len=300):
@@ -403,12 +664,12 @@ def smart_fade_out(wav_path, silence_thresh_db=-40, min_silence_len=300):
 def trim_audio_endpoint(audio_segment, threshold=None, buffer_ms=None):
     """
     Trim audio to the detected end of speech using RMS energy analysis.
-    
+
     Args:
         audio_segment: pydub AudioSegment object
         threshold: RMS threshold for speech detection (from config if None)
         buffer_ms: Buffer to add after detected endpoint (from config if None)
-    
+
     Returns:
         Trimmed AudioSegment
     """
@@ -416,88 +677,88 @@ def trim_audio_endpoint(audio_segment, threshold=None, buffer_ms=None):
         threshold = SPEECH_ENDPOINT_THRESHOLD
     if buffer_ms is None:
         buffer_ms = TRIMMING_BUFFER_MS
-    
+
     # Convert to numpy array for analysis
     samples = np.array(audio_segment.get_array_of_samples())
     if audio_segment.channels == 2:
         samples = samples.reshape((-1, 2)).mean(axis=1)
-    
+
     # Normalize samples
     samples = samples.astype(np.float32) / audio_segment.max_possible_amplitude
-    
+
     # Calculate RMS in sliding windows (50ms windows)
     window_size = int(0.05 * audio_segment.frame_rate)  # 50ms
     rms_values = []
-    
+
     for i in range(0, len(samples) - window_size, window_size // 2):
         window = samples[i:i + window_size]
         rms = np.sqrt(np.mean(window ** 2))
         rms_values.append(rms)
-    
+
     # Find actual end of speech using energy decay detection
     speech_end_idx = 0  # Default to beginning if no speech found
-    
+
     # Look for a significant and sustained drop in energy
     # Scan backwards to find where energy consistently stays above a higher threshold
     strong_speech_threshold = threshold * 3  # 3x threshold for "real" speech
-    
+
     for i in range(len(rms_values) - 1, -1, -1):
         if rms_values[i] > strong_speech_threshold:
             # Found strong speech, check if it's sustained
             # Look forward to see if energy drops and stays low
             sustained_speech = True
             windows_ahead = min(10, len(rms_values) - i)  # Look ahead up to 10 windows (250ms)
-            
+
             # Check if most of the next windows have reasonable speech levels
             speech_count = 0
             for j in range(i, min(i + windows_ahead, len(rms_values))):
                 if rms_values[j] > threshold:
                     speech_count += 1
-            
+
             # If this looks like the end of sustained speech content
             if speech_count >= max(1, windows_ahead * 0.3):  # At least 30% speech in next windows
                 speech_end_idx = i
                 break
-    
+
     # If no strong speech found, fall back to simple threshold method but be conservative
     if speech_end_idx == 0:
         for i in range(len(rms_values) - 1, -1, -1):
             if rms_values[i] > threshold * 2:  # Use 2x threshold for fallback
                 speech_end_idx = i
                 break
-    
+
     # Convert back to milliseconds and add buffer
     # Convert window index to sample position, then to milliseconds
     sample_position = speech_end_idx * (window_size // 2)
     speech_end_ms = int(sample_position * 1000 / audio_segment.frame_rate)
     trim_point_ms = min(speech_end_ms + buffer_ms, len(audio_segment))
-    
+
     return audio_segment[:trim_point_ms]
 
 def process_audio_with_trimming_and_silence(audio_segment, boundary_type, enable_trimming=None):
     """
     Complete audio processing: trim to speech endpoint + add punctuation-based silence.
-    
+
     Args:
         audio_segment: pydub AudioSegment object
         boundary_type: Boundary type from text processing
         enable_trimming: Whether to trim audio (from config if None)
-    
+
     Returns:
         Processed AudioSegment with trimming and appropriate silence
     """
     if enable_trimming is None:
         enable_trimming = ENABLE_AUDIO_TRIMMING
-    
+
     processed_audio = audio_segment
-    
+
     # Step 1: Trim to speech endpoint if enabled
     if enable_trimming:
         processed_audio = trim_audio_endpoint(processed_audio)
-    
+
     # Step 2: Add punctuation-appropriate silence
     processed_audio = add_contextual_silence_memory(processed_audio, boundary_type)
-    
+
     return processed_audio
 
 # ============================================================================

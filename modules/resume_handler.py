@@ -91,7 +91,7 @@ def validate_resume_point(start_chunk, total_expected_chunks):
 def process_book_folder_resume(book_dir, voice_path, tts_params, device, start_chunk=1):
     """Enhanced book processing with resume capability"""
     from modules.tts_engine import process_one_chunk, load_optimized_model, get_optimal_workers
-    from chatterbox.tts import punc_norm
+    from src.chatterbox.tts import punc_norm
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     # Setup directories
@@ -233,12 +233,14 @@ def process_book_folder_resume(book_dir, voice_path, tts_params, device, start_c
         compatible_voice = ensure_voice_sample_compatibility(voice_path, output_dir=tts_dir)
         model.prepare_conditionals(compatible_voice, exaggeration=tts_params['exaggeration'])
 
-        # Load ASR model once per batch if needed
+        # Load ASR model once per batch if needed using adaptive manager
         asr_model = None
+        asr_device_used = None
         if ENABLE_ASR:
-            import whisper
-            print(f"🎤 Loading Whisper ASR model for batch...")
-            asr_model = whisper.load_model("base", device="cuda")
+            from modules.asr_manager import load_asr_model_adaptive
+            print(f"🎤 Loading ASR model for resume mode...")
+            # Resume mode uses fallback config (no intelligent selection)
+            asr_model, asr_device_used = load_asr_model_adaptive()
 
         futures = []
         batch_results = []
@@ -294,7 +296,8 @@ def process_book_folder_resume(book_dir, voice_path, tts_params, device, start_c
         print(f"🧹 Cleaning up after batch {actual_start_chunk}-{actual_end_chunk}")
         del model
         if asr_model:
-            del asr_model
+            from modules.asr_manager import cleanup_asr_model
+            cleanup_asr_model(asr_model)
         torch.cuda.empty_cache()
         import gc
         gc.collect()

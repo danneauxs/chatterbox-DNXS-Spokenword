@@ -27,10 +27,8 @@ audio_chunks/
 InputAudio/
 InputVoice/
 
-# Keep only sample voice files (you'll manually curate these)
-Voice_Samples/*
-!Voice_Samples/sample_*.wav
-!Voice_Samples/README.md
+# Include demo voice samples
+# Voice_Samples/ - include all demo samples for users
 
 # Text Input Books (users add their own)
 Text_Input/
@@ -63,6 +61,7 @@ status_check.py
 SESSION_STATE.md*
 CLAUDE_CHANGES.log*
 Tree*
+
 
 # Claude AI Development Files (keep locally but don't publish)
 CLAUDE.md*
