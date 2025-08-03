@@ -112,7 +112,7 @@ python3 start.py
 
 ```bash
 # Using launcher script (recommended)
-./launch_gradio_local.sh
+./launch_gradio.sh
 
 # Or direct Python  
 source venv/bin/activate
@@ -197,7 +197,7 @@ ls  # You should see optimized files for RunPod environment
 
 #### Step 2: Upload to RunPod
 
-1. Create a new RunPod instance with good GPU
+1. Create a new RunPod instance with good GPU Pytorch 2.2 (2.8 will have to downgrade then install 2.2 - LOOOONG time to do)
 
 2. **Upload all files** from `RunPod Deploy/` folder to your RunPod instance
 
@@ -232,14 +232,14 @@ ls  # You should see optimized files for RunPod environment
 - **CPU:** 4+ cores recommended
 - **RAM:** 16GB+ (8GB minimum)
 - **Storage:** 10GB+ free space
-- **GPU:** Optional (CUDA-compatible for faster processing)
+- **GPU:** Optional (CUDA-compatible for faster processing) 4-6GB VARAM
 
 ### Cloud Deployment
 
 #### HuggingFace Spaces
 
 - **CPU Tier:** Works but slower processing
-- **A10G Small (16GB):** Recommended for optimal performance
+- **Nvidia 4T Small (16GB):** Recommended for Cost Effective performance
 - **A100 (40GB):** Overkill but fastest processing
 
 #### RunPod
