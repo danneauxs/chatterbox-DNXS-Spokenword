@@ -21,7 +21,9 @@ Choose your preferred interface:
 
 
 - 
-- **🌐 Local Gradio** - Web interface for local use - Book conversion only
+- **🌐 Gradio** - Web interface for local use - Book conversion only
+- [DEMO  <img width="118" height="28" alt="image" src="https://github.com/user-attachments/assets/f56ef0df-6f76-4a99-a1f2-e708f40ee10b" />](https://huggingface.co/spaces/bobsackett/ChatterboxTTS-DNXS-Spokenwordv1)   <-- Click Icon!
+
 - **☁️ Cloud Deployment** - Deploy to HuggingFace Spaces or RunPod book conversion on
 
 ---
@@ -143,7 +145,7 @@ python3 gradio_main_interface.py
 
 ## ☁️ Cloud Deployment
 
-### 🤗 HuggingFace Spaces Deployment
+### 🤗 HuggingFace Spaces Deployment  [DEMO](https://huggingface.co/spaces/bobsackett/ChatterboxTTS-DNXS-Spokenwordv1)
 
 **Deploy the optimized HF version for public use:**
 
