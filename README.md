@@ -16,7 +16,8 @@ Choose your preferred interface:
 
 - **💻 CLI Interface** - Command-line tool for automation and full featured
 - 
--<img width="614" height="376" alt=" cli" src="https://github.com/user-attachments/assets/d108dfbd-0d31-4d42-baa0-87221db0ce51" />
+-<img width="614" height="376" alt=" cli" src="https://github.com/user-attachments/assets/832fd6ca-d528-40a0-9705-d9963e646dda" />
+
 
 
 - 
