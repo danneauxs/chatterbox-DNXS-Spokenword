@@ -86,8 +86,8 @@ if ! python3 -c "import vaderSentiment" 2>/dev/null; then
 fi
 
 # Check if main GUI file exists
-if [ ! -f "main_launcher_gui.py" ]; then
-    echo "❌ main_launcher_gui.py not found!"
+if [ ! -f "chatterbox_gui.py" ]; then
+    echo "❌ chatterbox_gui.py not found!"
     echo "Make sure you're in the correct directory."
     exit 1
 fi
@@ -97,7 +97,7 @@ echo ""
 
 # Launch the GUI
 export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
-python3 main_launcher_gui.py
+python3 chatterbox_gui.py
 
 exit_code=$?
 

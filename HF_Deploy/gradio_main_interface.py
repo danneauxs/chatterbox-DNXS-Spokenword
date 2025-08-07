@@ -20,6 +20,13 @@ except ImportError as e:
     print(f"⚠️  Tab 1 not available: {e}")
     TAB1_AVAILABLE = False
 
+try:
+    from gradio_tabs.tab6_settings import create_settings_tab_interface
+    TAB6_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Tab 6 (Settings) not available: {e}")
+    TAB6_AVAILABLE = False
+
 def create_placeholder_tab(tab_name, tab_number):
     """Create a placeholder tab for future implementation"""
     with gr.Column():
@@ -46,8 +53,6 @@ def create_main_interface():
         gr.Markdown("""
         # 🎤 ChatterboxTTS - Complete Web Interface
         *Modular audiobook generation system with advanced TTS capabilities*
-        
-        📚 **[Source Code on GitHub](https://github.com/yourusername/ChatterboxTTS-DNXS-Spokenword)** | 📖 [Documentation](https://github.com/yourusername/ChatterboxTTS-DNXS-Spokenword#readme)
         """)
 
         # Tab interface
@@ -73,8 +78,13 @@ def create_main_interface():
             with gr.Tab("5. Audio Tools"):
                 create_placeholder_tab("Audio Tools", 5)
 
-            with gr.Tab("6. Settings"):
-                create_placeholder_tab("Settings", 6)
+            # Tab 6: Settings (Working)
+            if TAB6_AVAILABLE:
+                with gr.Tab("6. Settings"):
+                    create_settings_tab_interface()
+            else:
+                with gr.Tab("6. Settings"):
+                    create_placeholder_tab("Settings", 6)
 
             with gr.Tab("7. Chunk Tools"):
                 create_placeholder_tab("Chunk Tools", 7)

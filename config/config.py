@@ -38,7 +38,7 @@ DEFAULT_ASR_MODEL = "base"            # Default Whisper model for ASR validation
 # ASR Model Memory Requirements (approximate)
 ASR_MODEL_VRAM_MB = {
     "tiny": 39,
-    "base": 74, 
+    "base": 74,
     "small": 244,
     "medium": 769,
     "large": 1550,
@@ -49,7 +49,7 @@ ASR_MODEL_VRAM_MB = {
 ASR_MODEL_RAM_MB = {
     "tiny": 150,
     "base": 300,
-    "small": 800, 
+    "small": 800,
     "medium": 2000,
     "large": 4000,
     "large-v2": 4000,
@@ -71,31 +71,31 @@ HUM_AMPLITUDE_MAX = 0.1               # Maximum RMS for steady hum detection
 # AUDIO TRIMMING SETTINGS
 # ============================================================================
 ENABLE_AUDIO_TRIMMING = True
-SPEECH_ENDPOINT_THRESHOLD = 0.005
+SPEECH_ENDPOINT_THRESHOLD = 0.006
 TRIMMING_BUFFER_MS = 50
 
 # ============================================================================
 # SILENCE DURATION SETTINGS (milliseconds)
 # ============================================================================
-SILENCE_CHAPTER_START = 500           # Half second for chapter beginnings
-SILENCE_CHAPTER_END = 400             # Longer pause before new chapter
-SILENCE_SECTION_BREAK = 300           # Section transitions
-SILENCE_PARAGRAPH_END = 300           # Standard paragraph breaks
+SILENCE_CHAPTER_START = 1195
+SILENCE_CHAPTER_END = 1100
+SILENCE_SECTION_BREAK = 700
+SILENCE_PARAGRAPH_END = 1000
 
 # Punctuation-specific silence settings (milliseconds)
-SILENCE_COMMA = 150                   # Brief pause after commas
+SILENCE_COMMA = 150
 SILENCE_SEMICOLON = 150               # Medium pause after semicolons
 SILENCE_COLON = 150                   # Pause after colons
-SILENCE_PERIOD = 200                  # Sentence end pause
-SILENCE_QUESTION_MARK = 350           # Question pause (slightly longer)
-SILENCE_EXCLAMATION = 300             # Exclamation pause
+SILENCE_PERIOD = 500
+SILENCE_QUESTION_MARK = 500
+SILENCE_EXCLAMATION = 200
 SILENCE_DASH = 200                    # Em dash pause
 SILENCE_ELLIPSIS = 80                # Ellipsis pause (suspense)
 SILENCE_QUOTE_END = 150               # End of quoted speech
 
 # Chunk-level silence settings
-ENABLE_CHUNK_END_SILENCE = True       # Add silence to end of every chunk
-CHUNK_END_SILENCE_MS = 200            # Default silence at end of each chunk
+ENABLE_CHUNK_END_SILENCE = False
+CHUNK_END_SILENCE_MS = 200
 
 # Content boundary silence settings (milliseconds)
 SILENCE_PARAGRAPH_FALLBACK = 500      # Original paragraph logic fallback
@@ -112,7 +112,7 @@ TARGET_LRA = 11                       # Target loudness range for consistency
 # ============================================================================
 # AUDIO PLAYBACK SPEED SETTINGS
 # ============================================================================
-ATEMPO_SPEED = 0.95
+ATEMPO_SPEED = 1.0
 
 # ============================================================================
 # ENVIRONMENT SETUP
@@ -139,7 +139,7 @@ CYAN = "\033[96m"
 # ============================================================================
 DEFAULT_EXAGGERATION = 0.5
 DEFAULT_CFG_WEIGHT = 0.5
-DEFAULT_TEMPERATURE = 0.8
+DEFAULT_TEMPERATURE = 0.85
 
 # Advanced Sampling Parameters (Min_P Sampler Support)
 DEFAULT_MIN_P = 0.05                   # Min probability threshold (0.0 disables)
@@ -162,21 +162,21 @@ BASE_TEMPERATURE = DEFAULT_TEMPERATURE    # Default: 0.7
 # --- Sensitivity ---
 # How much VADER's compound score affects each parameter.
 # Higher values mean more dramatic changes based on sentiment.
-VADER_EXAGGERATION_SENSITIVITY = 0.3
-VADER_CFG_WEIGHT_SENSITIVITY = 0.3
+VADER_EXAGGERATION_SENSITIVITY = 0.33
+VADER_CFG_WEIGHT_SENSITIVITY = 0.32
 VADER_TEMPERATURE_SENSITIVITY = 0.3
 VADER_MIN_P_SENSITIVITY = 0.01         # Reduced from 0.02 to prevent sampling issues
 VADER_REPETITION_PENALTY_SENSITIVITY = 0.05  # Reduced from 0.1 to be more conservative
 
 # --- Min/Max Clamps ---
 # Hard limits to prevent extreme, undesirable audio artifacts.
-TTS_PARAM_MIN_EXAGGERATION = 0.10000000000000002
+TTS_PARAM_MIN_EXAGGERATION = 0.1
 TTS_PARAM_MAX_EXAGGERATION = 0.65
-TTS_PARAM_MIN_CFG_WEIGHT = 0.10000000000000002
-TTS_PARAM_MAX_CFG_WEIGHT = 0.9
+TTS_PARAM_MIN_CFG_WEIGHT = 0.15
+TTS_PARAM_MAX_CFG_WEIGHT = 0.8
 
 TTS_PARAM_MIN_TEMPERATURE = 0.1
-TTS_PARAM_MAX_TEMPERATURE = 1.8
+TTS_PARAM_MAX_TEMPERATURE = 2.3499999999999988
 
 TTS_PARAM_MIN_MIN_P = 0.02             # Increased from 0.0 to prevent sampling issues
 TTS_PARAM_MAX_MIN_P = 0.3              # Reduced from MAX 0.5 to prevent over-restriction
@@ -188,7 +188,7 @@ TTS_PARAM_MAX_REPETITION_PENALTY = 2.0 # Higher values too restrictive MAX 2
 # ============================================================================
 # BATCH PROCESSING SETTINGS
 # ============================================================================
-BATCH_SIZE = 250
+BATCH_SIZE = 400
 CLEANUP_INTERVAL = 500                # Deep cleanup every N chunks (reduced frequency for speed)
 
 # ============================================================================
@@ -221,6 +221,29 @@ OUTPUT_VALIDATION_THRESHOLD = 0.6    # Minimum F1 score for output validation (r
 REGEN_TEMPERATURE_ADJUSTMENT = 0.1   # How much to adjust temperature per retry (increased for visibility)
 REGEN_EXAGGERATION_ADJUSTMENT = 0.15 # How much to adjust exaggeration per retry (increased for visibility)
 REGEN_CFG_ADJUSTMENT = 0.1           # How much to adjust cfg_weight per retry (increased for visibility)
+
+# ============================================================================
+# PERFORMANCE OPTIMIZATION SETTINGS
+# ============================================================================
+# Voice Embedding Caching - Cache voice embeddings to avoid recomputation
+ENABLE_VOICE_EMBEDDING_CACHE = True        # Enable voice embedding caching
+VOICE_CACHE_MEMORY_LIMIT_MB = 500          # Maximum memory for voice cache (MB)
+ENABLE_ADAPTIVE_VOICE_CACHE = True         # Adapt cache based on system memory
+
+# GPU Persistence Mode - Keep GPU in compute-ready state
+ENABLE_GPU_PERSISTENCE_MODE = False         # Try to enable GPU persistence mode
+GPU_PERSISTENCE_RETRY_COUNT = 3            # Retry attempts for persistence mode
+
+# CUDA Memory Pool - Advanced GPU memory management
+ENABLE_CUDA_MEMORY_POOL = True             # Enable CUDA memory pooling
+CUDA_MEMORY_POOL_FRACTION = 0.9            # Fraction of GPU memory to pool
+ENABLE_ADAPTIVE_MEMORY_POOL = True         # Adapt pool size to system
+
+# Producer-Consumer Pipeline - Eliminate chunk loading overhead
+ENABLE_PRODUCER_CONSUMER_PIPELINE = True   # Re-enabled with proper ETA tracking
+PIPELINE_QUEUE_SIZE_MULTIPLIER = 3         # Queue size = workers * multiplier
+PIPELINE_MAX_QUEUE_SIZE = 20               # Maximum queue size limit
+ENABLE_PIPELINE_FALLBACK = True            # Fall back to sequential if pipeline fails
 
 # ============================================================================
 # FEATURE TOGGLES

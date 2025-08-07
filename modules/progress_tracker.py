@@ -162,13 +162,18 @@ def monitor_gpu_utilization():
 
 def optimize_memory_if_needed():
     """Trigger memory optimization when thresholds are exceeded"""
-    import torch
-    import gc
-
-    torch.cuda.empty_cache()
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.ipc_collect()
+    try:
+        # Try to use the enhanced CUDA memory optimization if available
+        from modules.tts_engine import optimize_cuda_memory_usage
+        optimize_cuda_memory_usage()
+    except ImportError:
+        # Fallback to basic optimization
+        import torch
+        import gc
+        torch.cuda.empty_cache()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.ipc_collect()
 
 def display_system_info():
     """Display system information at startup"""

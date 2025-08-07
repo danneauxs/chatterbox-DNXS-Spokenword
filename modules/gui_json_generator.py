@@ -18,7 +18,7 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from config.config import *
-from modules.tts_engine import load_optimized_model, process_one_chunk
+from modules.tts_engine import load_optimized_model, process_one_chunk, prewarm_model_with_voice
 from modules.file_manager import setup_book_directories, list_voice_samples, ensure_voice_sample_compatibility
 from wrapper.chunk_loader import load_chunks
 from src.chatterbox.tts import punc_norm
@@ -97,13 +97,22 @@ def generate_audiobook_from_json(json_path, voice_name, temp_setting=None):
         
         print(f"🚀 Using device: {device}")
 
+        # Setup basic TTS parameters for model pre-warming only
+        user_tts_params = {
+            'exaggeration': DEFAULT_EXAGGERATION,
+            'cfg_weight': DEFAULT_CFG_WEIGHT,
+            'temperature': DEFAULT_TEMPERATURE
+        }
+        print(f"🎛️ Pre-warming TTS params: {user_tts_params}")
+
         # Load TTS model
         print(f"🤖 Loading TTS model...")
         model = load_optimized_model(device)
         
-        # Prepare voice conditionals
-        print(f"🎤 Preparing voice conditionals...")
-        model.prepare_conditionals(voice_path)
+        # Pre-warm model to eliminate first chunk quality variations
+        print(f"🔥 Pre-warming model with voice sample...")
+        compatible_voice = ensure_voice_sample_compatibility(voice_path)
+        model = prewarm_model_with_voice(model, compatible_voice, user_tts_params)
 
         # Setup output directories
         output_root = AUDIOBOOK_ROOT / book_name
@@ -130,15 +139,13 @@ def generate_audiobook_from_json(json_path, voice_name, temp_setting=None):
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = []
             for i, chunk_data in enumerate(all_chunks):
-                # Use chunk's TTS params, with temperature override if provided
-                chunk_tts_params = chunk_data.get("tts_params", {}).copy()
-                if temp_setting is not None:
-                    chunk_tts_params["temperature"] = temp_setting
+                # Use ONLY the chunk's TTS params from JSON - no config defaults
+                chunk_tts_params = chunk_data.get("tts_params", {})
                 
-                # Ensure required TTS params exist
-                chunk_tts_params.setdefault("exaggeration", DEFAULT_EXAGGERATION)
-                chunk_tts_params.setdefault("cfg_weight", DEFAULT_CFG_WEIGHT)
-                chunk_tts_params.setdefault("temperature", DEFAULT_TEMPERATURE)
+                # If no TTS params in JSON, cannot generate audio
+                if not chunk_tts_params or not all(key in chunk_tts_params for key in ['exaggeration', 'cfg_weight', 'temperature']):
+                    missing_params = [key for key in ['exaggeration', 'cfg_weight', 'temperature'] if key not in chunk_tts_params]
+                    raise ValueError(f"Chunk {i+1} missing required TTS parameters: {missing_params}. Cannot generate audio without complete JSON parameters.")
 
                 future = executor.submit(
                     process_one_chunk,

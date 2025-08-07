@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
+import os
+import logging
 
 import librosa
 import torch
@@ -189,6 +191,50 @@ class ChatterboxTTS:
         return cls.from_local(Path(local_path).parent, device)
 
     def prepare_conditionals(self, wav_fpath, exaggeration=0.5):
+        """Prepare voice conditionals with optional caching for performance optimization"""
+        
+        # Try to import voice caching functions (with fallback for compatibility)
+        try:
+            from modules.tts_engine import (
+                get_voice_cache_key, 
+                _voice_embedding_cache, 
+                _cache_memory_usage,
+                estimate_cache_memory_mb,
+                get_available_memory,
+                clear_voice_embedding_cache
+            )
+            from config.config import (
+                ENABLE_VOICE_EMBEDDING_CACHE, 
+                VOICE_CACHE_MEMORY_LIMIT_MB, 
+                ENABLE_ADAPTIVE_VOICE_CACHE
+            )
+            caching_available = True
+        except ImportError:
+            caching_available = False
+            logging.warning("Voice embedding caching not available - using standard processing")
+
+        # Check cache if caching is enabled and available
+        if caching_available and ENABLE_VOICE_EMBEDDING_CACHE:
+            cache_key = get_voice_cache_key(wav_fpath, exaggeration)
+            
+            # Check if we have cached embeddings
+            if cache_key in _voice_embedding_cache:
+                try:
+                    self.conds = _voice_embedding_cache[cache_key]
+                    logging.info("🚀 Using cached voice embeddings - significant speedup!")
+                    return
+                except Exception as e:
+                    logging.warning(f"⚠️ Cache retrieval failed: {e}, computing fresh embeddings")
+                    
+            # Check memory constraints before caching
+            available_memory = get_available_memory()
+            if ENABLE_ADAPTIVE_VOICE_CACHE and available_memory < 2048:  # Less than 2GB available
+                logging.warning("🧠 Low memory detected - disabling voice embedding cache")
+                caching_available = False
+
+        # Original embedding computation (always runs for new voices or cache misses)
+        logging.info("🎤 Computing voice embeddings (this may take a moment)")
+        
         ## Load reference wav
         s3gen_ref_wav, _sr = librosa.load(wav_fpath, sr=S3GEN_SR)
 
@@ -213,6 +259,30 @@ class ChatterboxTTS:
             emotion_adv=exaggeration * torch.ones(1, 1, 1),
         ).to(device=self.device)
         self.conds = Conditionals(t3_cond, s3gen_ref_dict)
+
+        # Cache the computed embeddings if caching is enabled
+        if caching_available and ENABLE_VOICE_EMBEDDING_CACHE:
+            try:
+                # Check memory usage before caching
+                global _cache_memory_usage
+                estimated_size = estimate_cache_memory_mb(self.conds)
+                
+                if _cache_memory_usage + estimated_size <= VOICE_CACHE_MEMORY_LIMIT_MB:
+                    cache_key = get_voice_cache_key(wav_fpath, exaggeration)
+                    _voice_embedding_cache[cache_key] = self.conds
+                    _cache_memory_usage += estimated_size
+                    logging.info(f"💾 Voice embeddings cached ({estimated_size}MB, total: {_cache_memory_usage}MB)")
+                else:
+                    logging.warning("⚠️ Cache memory limit reached - clearing old cache")
+                    clear_voice_embedding_cache()
+                    # Try caching again after clearing
+                    cache_key = get_voice_cache_key(wav_fpath, exaggeration)
+                    _voice_embedding_cache[cache_key] = self.conds
+                    _cache_memory_usage = estimated_size
+                    logging.info(f"💾 Voice embeddings cached after cleanup ({estimated_size}MB)")
+                    
+            except Exception as e:
+                logging.warning(f"⚠️ Caching failed: {e}, continuing without cache")
 
     def generate(
         self,

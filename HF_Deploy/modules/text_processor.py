@@ -172,7 +172,7 @@ def smart_punctuate(text):
         if not stripped:
             out.append("")  # Keep the blank line
         # Process non-empty lines
-        elif not re.search(r'[.!?]["\']?$', stripped):
+        elif not re.search(r'[.!?]$', stripped) and not re.search(r'[.!?]["\']$', stripped):
             out.append(stripped + ".")
         else:
             out.append(stripped)
@@ -186,6 +186,18 @@ def smart_punctuate(text):
     # Remove problematic formatting
     result = re.sub(r'\*\*([^*]+)\*\*', r'\1', result)  # Remove bold markdown
     result = re.sub(r'_{2,}', '', result)  # Remove underlines
+    
+    # Fix any escaped quotes that might appear in the text
+    result = result.replace('\\"', '"').replace("\\'", "'")
+    
+    # Additional quote normalization to prevent recurring dialogue corruption
+    result = re.sub(r'(["\'])\s*,\s*(["\'])', r'\1, \2', result)  # Fix quote spacing around commas
+    result = re.sub(r'(["\'])\s*\.\s*(["\'])', r'\1. \2', result)  # Fix quote spacing around periods
+    result = re.sub(r'(["\'])\s*([,.])\s*(["\'])\s*([,.])', r'\1\2 \3', result)  # Remove duplicate punctuation
+    
+    # Debug logging for dialogue patterns
+    if '"' in result and ('replied' in result or 'said' in result):
+        print(f"🗣️ DEBUG: Dialogue detected in smart_punctuate: {result[:100]}...")
 
     return result
 
@@ -232,42 +244,49 @@ def fix_short_sentence_artifacts(chunk_text):
 
     return chunk_text
 
+def _is_apostrophe(text, pos):
+    """Check if a single quote at position pos is likely an apostrophe (not speech quote)"""
+    if pos == 0 or pos >= len(text) - 1:
+        return False
+    
+    # Check characters before and after
+    before = text[pos - 1] if pos > 0 else ' '
+    after = text[pos + 1] if pos < len(text) - 1 else ' '
+    
+    # It's likely an apostrophe if:
+    # 1. Preceded and followed by letters (contractions like "don't", possessives like "John's")
+    # 2. Or preceded by letter and followed by 's' or 't' (common contractions)
+    if before.isalpha() and after.isalpha():
+        return True
+    if before.isalpha() and after in 's':
+        return True
+    
+    return False
+
 def sentence_chunk_text(text, max_words=MAX_CHUNK_WORDS, min_words=MIN_CHUNK_WORDS):
     """
-    Enhanced sentence chunking that respects paragraph boundaries and punctuation rules.
+    Simple and reliable text chunking that follows the exact rules:
     
     TEXT CHUNKING RULES:
-    Text will be chunked by sentence, adhering to the following criteria:
-    
-    1. Chunks must contain a minimum of 4 words, even if this means merging very short sentences.
-    2. Chunks must not exceed 30 words.
-    3. For sentences longer than 30 words, the chunk will be truncated at the most recent 
-       punctuation mark (e.g., comma, semicolon) that falls within the 1-29 word range, 
-       effectively breaking the sentence there.
-    
-    TECHNICAL IMPLEMENTATION:
-    - Minimum 4 words per chunk (configurable via min_words)
-    - Maximum 30 words per chunk (configurable via max_words)
-    - Break at sentence endings (.!?) when possible
-    - For sentences > max_words: work backwards from sentence end to find punctuation
-    - Break AFTER punctuation (comma, semicolon, etc.) even if chunk < max_words
-    - CRITICAL: Punctuation stays WITH PRECEDING TEXT for proper TTS pause timing
-    - Example: "...failed," | "so she..." NOT "...failed" | ", so she..."
-    - This preserves natural pauses and speech rhythm for TTS processing
-    - Resume chunking from break point and continue normally
+    1. Break at sentence boundaries (. ! ?) first (highest priority)
+    2. If sentence > max_words, break at punctuation working backwards (; — , in that order)
+    3. If no punctuation available, preserve sentence intact to maintain coherence
+    4. Ensure all chunks meet min_words requirement by combining small chunks
     
     PUNCTUATION HIERARCHY (for breaking long sentences):
-    1. Period, exclamation, question mark (sentence boundaries)
-    2. Semicolon, em-dash (major pauses)  
-    3. Comma (minor pauses)
-    4. Force break at word limit (last resort)
+    1. . ! ? (sentence boundaries) - handled at sentence level
+    2. ; (semicolon) - major pause
+    3. — – (dashes) - major pause  
+    4. , (comma) - minor pause
+    5. Preserve overlong sentences if no punctuation available
     """
-
+    import re
+    
     # Process text paragraph by paragraph to preserve structure
     paragraphs = text.split('\n\n')
-    all_processed_chunks = []
+    all_final_chunks = []
     
-    for para_idx, paragraph in enumerate(paragraphs):
+    for paragraph in paragraphs:
         paragraph = paragraph.strip()
         if not paragraph:
             continue
@@ -281,113 +300,137 @@ def sentence_chunk_text(text, max_words=MAX_CHUNK_WORDS, min_words=MIN_CHUNK_WOR
         
         if is_chapter_header:
             # Chapter headers are their own chunks and always paragraph ends
-            all_processed_chunks.append((paragraph, True))
+            all_final_chunks.append((paragraph, True))
             continue
-
-        # Split paragraph into sentences
-        sentence_end_re = re.compile(r'([.!?][\"\'\)]*\s+)')
-        sentences = []
-        start_index = 0
-
-        for match in sentence_end_re.finditer(paragraph):
-            end_index = match.end()
-            sentence = paragraph[start_index:end_index].strip()
+        
+        # Split into sentences using periods, exclamation marks, question marks
+        # This avoids the complex quote detection that was causing problems
+        sentences = re.split(r'([.!?])\s+', paragraph.strip())
+        
+        # Reconstruct sentences with their punctuation
+        reconstructed_sentences = []
+        for i in range(0, len(sentences) - 1, 2):
+            sentence = sentences[i].strip()
+            if i + 1 < len(sentences):
+                punct = sentences[i + 1]
+                sentence += punct
             if sentence:
-                sentences.append(sentence)
-            start_index = end_index
-
-        if start_index < len(paragraph):
-            remainder = paragraph[start_index:].strip()
-            if remainder:
-                sentences.append(remainder)
-
-        # Process sentences within this paragraph
+                reconstructed_sentences.append(sentence)
+        
+        # Handle any remaining text (no ending punctuation)
+        if sentences and sentences[-1].strip():
+            last_part = sentences[-1].strip()
+            if last_part and not last_part in '.!?':
+                reconstructed_sentences.append(last_part)
+        
+        # Process each sentence
         paragraph_chunks = []
-        
-        for sent_idx, sentence in enumerate(sentences):
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-
-            # Check if sentence exceeds word limit
-            sentence_words = sentence.split()
-            is_last_sentence_in_para = (sent_idx == len(sentences) - 1)
-
-            if len(sentence_words) <= max_words:
-                # Sentence fits within limit - use as-is
-                paragraph_chunks.append((sentence, is_last_sentence_in_para))
+        for sent_idx, sentence in enumerate(reconstructed_sentences):
+            is_last_sentence = (sent_idx == len(reconstructed_sentences) - 1)
+            words = sentence.split()
+            
+            if len(words) <= max_words:
+                # Sentence fits, use as-is
+                paragraph_chunks.append((sentence.strip(), is_last_sentence))
             else:
-                # Sentence exceeds max_words - break at natural punctuation working backwards
-                broken_chunks = break_long_sentence_backwards(sentence, max_words, min_words)
-                # Only the last broken chunk gets paragraph end marking if it's the last sentence
-                for i, chunk_text in enumerate(broken_chunks):
-                    is_chunk_para_end = (is_last_sentence_in_para and i == len(broken_chunks) - 1)
-                    paragraph_chunks.append((chunk_text, is_chunk_para_end))
+                # Sentence too long, break it using punctuation
+                broken_chunks = _break_long_sentence_simple(sentence, max_words)
+                # Only mark the last broken chunk as sentence end
+                for i, chunk in enumerate(broken_chunks):
+                    is_chunk_end = (is_last_sentence and i == len(broken_chunks) - 1)
+                    paragraph_chunks.append((chunk.strip(), is_chunk_end))
         
-        # Add this paragraph's chunks to the overall list
-        all_processed_chunks.extend(paragraph_chunks)
+        all_final_chunks.extend(paragraph_chunks)
+    
+    # Combine small chunks that don't meet min_words requirement
+    combined_chunks = _combine_small_chunks(all_final_chunks, min_words, max_words)
+    
+    return combined_chunks
 
-    final_chunks = []
-    current_chunk_parts = []
-    current_chunk_is_para_end = False
+def _break_long_sentence_simple(sentence, max_words):
+    """Break a long sentence at punctuation marks, working backwards"""
+    import re
+    
+    # Punctuation patterns in priority order
+    patterns = [
+        r';\s*',      # semicolon + optional space
+        r'—\s*',      # em dash + optional space  
+        r'–\s*',      # en dash + optional space
+        r',\s*',      # comma + optional space
+    ]
+    
+    chunks = []
+    remaining = sentence.strip()
+    
+    while remaining:
+        words = remaining.split()
+        if len(words) <= max_words:
+            chunks.append(remaining)
+            break
+        
+        # Find best break point working backwards
+        best_break = -1
+        
+        # Try each punctuation pattern
+        for pattern in patterns:
+            matches = list(re.finditer(pattern, remaining))
+            if matches:
+                # Find rightmost match that results in chunk <= max_words
+                for match in reversed(matches):
+                    test_chunk = remaining[:match.end()].strip()
+                    if len(test_chunk.split()) <= max_words:
+                        best_break = match.end()
+                        break
+                if best_break != -1:
+                    break
+        
+        if best_break != -1:
+            # Found good break point
+            chunk = remaining[:best_break].strip()
+            chunks.append(chunk)
+            remaining = remaining[best_break:].strip()
+        else:
+            # No punctuation found - preserve sentence coherence by keeping it intact
+            # This prevents splitting sentences with potentially different sentiment
+            chunks.append(remaining)
+            break
+    
+    return chunks
 
-    for i, (sentence_text, is_sentence_para_end) in enumerate(all_processed_chunks):
-        sentence_word_count = len(sentence_text.split())
-
-        is_chapter_header = (
-            any(word in sentence_text.lower() for word in ['chapter', 'section', 'part', 'prologue', 'epilogue']) and
-            sentence_word_count <= 10
-        )
-
-        # If it's a chapter header, flush current buffer and add it as a standalone chunk
-        if is_chapter_header:
-            if current_chunk_parts:
-                combined_text = " ".join(current_chunk_parts)
-                final_chunks.append((combined_text, current_chunk_is_para_end))
-                current_chunk_parts = []
-                current_chunk_is_para_end = False
-            final_chunks.append((sentence_text, True)) # Chapter headers are always paragraph ends
-            continue
-
-        # Calculate word count if we add this sentence to the current buffer
-        current_word_count = sum(len(p.split()) for p in current_chunk_parts)
-        potential_word_count_with_new_sentence = current_word_count + sentence_word_count
-
-        # Condition to flush the current chunk (without the new sentence)
-        # This happens if adding the new sentence would make the current chunk too long
-        if current_chunk_parts and potential_word_count_with_new_sentence > max_words:
-            combined_text = " ".join(current_chunk_parts)
-            final_chunks.append((combined_text, current_chunk_is_para_end))
-            current_chunk_parts = []
-            current_chunk_is_para_end = False # Reset for the new chunk
-
-        # Add the current sentence to the buffer
-        current_chunk_parts.append(sentence_text)
-        if is_sentence_para_end:
-            current_chunk_is_para_end = True
-
-        # Now, after adding the current sentence, check if we should flush the *newly formed* current_chunk_parts
-        # This happens if it's a paragraph end AND the current chunk meets min_words
-        # Or if it's the very last sentence and the chunk meets min_words (handled by final flush)
-        if is_sentence_para_end and sum(len(p.split()) for p in current_chunk_parts) >= min_words:
-            combined_text = " ".join(current_chunk_parts)
-            final_chunks.append((combined_text, current_chunk_is_para_end))
-            current_chunk_parts = []
-            current_chunk_is_para_end = False
-
-    # After the loop, handle any remaining content in the buffer
-    if current_chunk_parts:
-        combined_text = " ".join(current_chunk_parts)
-        # The very last chunk of the text is always considered a paragraph end
-        final_chunks.append((combined_text, True))
-
-    # Apply short sentence cleanup (this function might need review too)
-    fixed_chunks = []
-    for chunk_text, is_para_end in final_chunks:
-        fixed_text = fix_short_sentence_artifacts(chunk_text)
-        fixed_chunks.append((fixed_text, is_para_end))
-
-    return fixed_chunks
+def _combine_small_chunks(chunks, min_words, max_words):
+    """Combine chunks that are too small"""
+    combined = []
+    current_chunk = ""
+    current_is_para_end = False
+    
+    for chunk_text, is_para_end in chunks:
+        chunk_words = len(chunk_text.split())
+        current_words = len(current_chunk.split()) if current_chunk else 0
+        
+        if not current_chunk:
+            # First chunk
+            current_chunk = chunk_text
+            current_is_para_end = is_para_end
+        elif current_words + chunk_words <= max_words:
+            # Can combine
+            current_chunk = current_chunk + " " + chunk_text
+            current_is_para_end = is_para_end  # Use the latest para_end flag
+        else:
+            # Can't combine, flush current and start new
+            if current_words >= min_words:
+                combined.append((current_chunk, current_is_para_end))
+                current_chunk = chunk_text
+                current_is_para_end = is_para_end
+            else:
+                # Current chunk too small, force combine anyway
+                current_chunk = current_chunk + " " + chunk_text
+                current_is_para_end = is_para_end
+    
+    # Handle remaining chunk
+    if current_chunk:
+        combined.append((current_chunk, current_is_para_end))
+    
+    return combined
 
 def break_long_sentence_backwards(sentence, max_words, min_words):
     """
@@ -400,18 +443,20 @@ def break_long_sentence_backwards(sentence, max_words, min_words):
     4. Continue processing remaining text normally
     
     PUNCTUATION HIERARCHY (in order of preference):
-    1. ; (semicolon) - major pause
-    2. — (em dash) - major pause  
-    3. , (comma) - minor pause
-    4. Force break at word limit (last resort)
+    1. . ! ? (sentence boundaries) - highest priority
+    2. ; (semicolon) - major pause
+    3. — (em dash) - major pause  
+    4. , (comma) - minor pause
+    5. Force break at word limit (last resort)
     """
     
     # Punctuation patterns to search for (in order of preference)
     punctuation_patterns = [
-        r';\s*',     # semicolon + optional space
-        r'—\s*',     # em dash + optional space
-        r'–\s*',     # en dash + optional space
-        r',\s*',     # comma + optional space
+        r'[.!?]\s+',  # sentence boundaries + required space (highest priority)
+        r';\s*',      # semicolon + optional space
+        r'—\s*',      # em dash + optional space
+        r'–\s*',      # en dash + optional space
+        r',\s*',      # comma + optional space
     ]
     
     chunks = []
@@ -569,6 +614,102 @@ def detect_content_boundaries(chunk_text, chunk_index, all_chunks, is_paragraph_
         boundary_type = detect_punctuation_boundary(chunk_text)
 
     return boundary_type
+
+def _split_long_dialogue(sentence, max_words, recursion_depth=0):
+    """
+    Split long dialogue sections that exceed word limits.
+    Tries to break at natural points: attribution, internal punctuation, then word boundaries.
+    """
+    # Prevent infinite recursion
+    if recursion_depth > 3:
+        # Force word boundary split if recursion gets too deep
+        words = sentence.split()
+        sentences = []
+        start = 0
+        while start < len(words):
+            end = min(start + max_words, len(words))
+            chunk_words = words[start:end]
+            sentences.append(' '.join(chunk_words))
+            start = end
+        return sentences
+    
+    words = sentence.split()
+    if len(words) <= max_words:
+        return [sentence]
+    
+    sentences = []
+    
+    # Strategy 1: Break at dialogue attribution (he said, she replied, etc.)
+    attribution_pattern = r'(\s+(?:he|she|I|they|[A-Z][a-z]+)\s+(?:said|replied|asked|shouted|whispered|continued|added|interrupted)[^.!?]*?[.!?]?\s*)'
+    attribution_matches = list(re.finditer(attribution_pattern, sentence, re.IGNORECASE))
+    
+    if attribution_matches:
+        start = 0
+        for match in attribution_matches:
+            # Check if breaking here keeps chunks under limit
+            before_attr = sentence[start:match.end()].strip()
+            if before_attr and len(before_attr.split()) <= max_words:
+                sentences.append(before_attr)
+                start = match.end()
+        
+        # Add remaining text
+        if start < len(sentence):
+            remaining = sentence[start:].strip()
+            if remaining:
+                if len(remaining.split()) > max_words:
+                    # Recursively split if still too long, but with depth tracking
+                    sentences.extend(_split_long_dialogue(remaining, max_words, recursion_depth + 1))
+                else:
+                    sentences.append(remaining)
+        
+        if sentences:  # If we successfully split, return result
+            return sentences
+    
+    # Strategy 2: Break at internal punctuation (commas, semicolons within quotes)
+    punct_pattern = r'([,;:]\s+)'
+    parts = re.split(punct_pattern, sentence)
+    
+    current_chunk = ""
+    sentences = []
+    for i, part in enumerate(parts):
+        test_chunk = current_chunk + part
+        if len(test_chunk.split()) > max_words and current_chunk:
+            sentences.append(current_chunk.strip())
+            current_chunk = part
+        else:
+            current_chunk = test_chunk
+    
+    if current_chunk.strip():
+        sentences.append(current_chunk.strip())
+    
+    # Check if any resulting chunk is still too long and needs further splitting
+    final_sentences = []
+    for chunk in sentences:
+        if len(chunk.split()) > max_words:
+            # Split oversized chunks using word boundaries
+            chunk_words = chunk.split()
+            start = 0
+            while start < len(chunk_words):
+                end = min(start + max_words, len(chunk_words))
+                sub_chunk_words = chunk_words[start:end]
+                final_sentences.append(' '.join(sub_chunk_words))
+                start = end
+        else:
+            final_sentences.append(chunk)
+    
+    if len(final_sentences) > 1:  # If we successfully split, return result
+        return final_sentences
+    
+    # Strategy 3: Force break at word boundaries (guaranteed to work)
+    sentences = []
+    start = 0
+    while start < len(words):
+        end = min(start + max_words, len(words))
+        chunk_words = words[start:end]
+        sentences.append(' '.join(chunk_words))
+        start = end
+    
+    return sentences
 
 # ============================================================================
 # UTILITY FUNCTIONS

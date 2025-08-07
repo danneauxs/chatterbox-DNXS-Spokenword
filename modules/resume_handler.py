@@ -214,6 +214,14 @@ def process_book_folder_resume(book_dir, voice_path, tts_params, device, start_c
                 total_audio_duration += get_chunk_audio_duration(chunk_path)
         print(f"📊 Existing audio: {timedelta(seconds=int(total_audio_duration))}")
 
+    # Initialize performance optimizations
+    from modules.tts_engine import detect_deployment_environment, enable_gpu_persistence_mode
+    deployment_env = detect_deployment_environment()
+    print(f"🌍 Deployment environment: {deployment_env}")
+    
+    # Enable GPU persistence mode for better performance
+    gpu_persistence_enabled = enable_gpu_persistence_mode()
+
     # Batch processing for remaining chunks
     print(f"📊 Processing {remaining_chunks} remaining chunks in batches of {BATCH_SIZE}")
 
@@ -231,7 +239,10 @@ def process_book_folder_resume(book_dir, voice_path, tts_params, device, start_c
         # Fresh model for each batch
         model = load_optimized_model(device)
         compatible_voice = ensure_voice_sample_compatibility(voice_path, output_dir=tts_dir)
-        model.prepare_conditionals(compatible_voice, exaggeration=tts_params['exaggeration'])
+        
+        # Pre-warm model to eliminate first chunk quality variations
+        from modules.tts_engine import prewarm_model_with_voice
+        model = prewarm_model_with_voice(model, compatible_voice, tts_params)
 
         # Load ASR model once per batch if needed using adaptive manager
         asr_model = None
@@ -249,48 +260,84 @@ def process_book_folder_resume(book_dir, voice_path, tts_params, device, start_c
         optimal_workers = get_optimal_workers()
         print(f"🔧 Using {optimal_workers} workers for batch {actual_start_chunk}-{actual_end_chunk}")
 
-        with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
-            for i, chunk_data in enumerate(batch_chunks):
-                global_chunk_index = chunk_offset + batch_start + i
+        # Try producer-consumer pipeline first (Phase 4 optimization)
+        batch_results = []
+        if ENABLE_PRODUCER_CONSUMER_PIPELINE:
+            try:
+                print(f"🚀 Attempting producer-consumer pipeline for resume batch {actual_start_chunk}-{actual_end_chunk}")
+                from modules.tts_engine import process_chunks_with_pipeline
+                pipeline_results = process_chunks_with_pipeline(
+                    all_chunks, batch_chunks, chunk_offset, text_chunks_dir, audio_chunks_dir,
+                    voice_path, tts_params, start_time, total_chunks, punc_norm, book_dir.name,
+                    log_run, log_path, device, model, asr_model, True, optimal_workers,  # asr_enabled=True for resume
+                    total_audio_duration  # Pass accumulated duration for proper ETA calculation
+                )
+                
+                # Handle tuple return from pipeline
+                if isinstance(pipeline_results, tuple) and len(pipeline_results) == 2:
+                    batch_results, batch_audio_duration = pipeline_results
+                    total_audio_duration += batch_audio_duration
+                else:
+                    # Fallback for old return format
+                    batch_results = pipeline_results
+                
+                if batch_results:
+                    print(f"✅ Producer-consumer pipeline completed resume batch: {len(batch_results)} chunks")
+                    # Pipeline already handled progress logging internally
+                
+            except Exception as e:
+                logging.error(f"❌ Producer-consumer pipeline failed in resume: {e}")
+                if not ENABLE_PIPELINE_FALLBACK:
+                    raise
+                batch_results = []  # Clear failed results
+        
+        # Fallback to original sequential processing if pipeline disabled or failed
+        if not batch_results:
+            print(f"🔄 Using sequential processing fallback for resume batch {actual_start_chunk}-{actual_end_chunk}")
+            futures = []
 
-                # Check for shutdown request
-                if shutdown_requested:
-                    print(f"\n⏹️ {YELLOW}Stopping submission of new chunks...{RESET}")
-                    break
+            with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
+                for i, chunk_data in enumerate(batch_chunks):
+                    global_chunk_index = chunk_offset + i
 
-                chunk = chunk_data["text"]
-                all_chunk_texts = [cd["text"] for cd in all_chunks]
-                boundary_type = chunk_data.get("boundary_type", "none")
+                    # Check for shutdown request
+                    if shutdown_requested:
+                        print(f"\n⏹️ {YELLOW}Stopping submission of new chunks...{RESET}")
+                        break
 
-                futures.append(executor.submit(
-                    process_one_chunk,
-                    global_chunk_index, chunk, text_chunks_dir, audio_chunks_dir,
-                    voice_path, tts_params, start_time, total_chunks,
-                    punc_norm, book_dir.name, log_run, log_path, device,
-                    model, asr_model, all_chunk_texts, boundary_type
-                ))
+                    chunk = chunk_data["text"]
+                    all_chunk_texts = [cd["text"] for cd in all_chunks]
+                    boundary_type = chunk_data.get("boundary_type", "none")
 
-            # Wait for batch to complete
-            print(f"🔄 {CYAN}Waiting for batch {actual_start_chunk}-{actual_end_chunk} to complete...{RESET}")
-            completed_count = 0
+                    futures.append(executor.submit(
+                        process_one_chunk,
+                        global_chunk_index, chunk, text_chunks_dir, audio_chunks_dir,
+                        voice_path, tts_params, start_time, total_chunks,
+                        punc_norm, book_dir.name, log_run, log_path, device,
+                        model, asr_model, all_chunk_texts, boundary_type
+                    ))
 
-            for fut in as_completed(futures):
-                try:
-                    idx, wav_path = fut.result()
-                    if wav_path and wav_path.exists():
-                        # Measure actual audio duration for this chunk
-                        chunk_duration = get_chunk_audio_duration(wav_path)
-                        total_audio_duration += chunk_duration
-                        batch_results.append((idx, wav_path))
+                # Wait for batch to complete
+                print(f"🔄 {CYAN}Waiting for batch {actual_start_chunk}-{actual_end_chunk} to complete...{RESET}")
+                completed_count = 0
 
-                        # Update progress every 10 chunks within batch
-                        completed_count += 1
-                        if completed_count % 10 == 0:
-                            current_chunk = chunk_offset + batch_start + completed_count
-                            log_chunk_progress(current_chunk - 1, total_chunks, start_time, total_audio_duration)
+                for fut in as_completed(futures):
+                    try:
+                        idx, wav_path = fut.result()
+                        if wav_path and wav_path.exists():
+                            # Measure actual audio duration for this chunk
+                            chunk_duration = get_chunk_audio_duration(wav_path)
+                            total_audio_duration += chunk_duration
+                            batch_results.append((idx, wav_path))
 
-                except Exception as e:
-                    logging.error(f"Future failed in batch: {e}")
+                            # Update progress every 10 chunks within batch
+                            completed_count += 1
+                            if completed_count % 10 == 0:
+                                current_chunk = chunk_offset + completed_count
+                                log_chunk_progress(current_chunk - 1, total_chunks, start_time, total_audio_duration)
+
+                    except Exception as e:
+                        logging.error(f"Future failed in batch: {e}")
 
         # Clean up model after batch
         print(f"🧹 Cleaning up after batch {actual_start_chunk}-{actual_end_chunk}")
@@ -472,13 +519,9 @@ def resume_book_from_chunk(start_chunk):
 
     tts_params = dict(exaggeration=exaggeration, cfg_weight=cfg_weight, temperature=temperature)
 
-    # Determine device
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.backends.mps.is_available():
-        device = "mps"
-    else:
-        device = "cpu"
+    # Determine device with proper validation
+    from modules.tts_engine import get_best_available_device
+    device = get_best_available_device()
 
     print(f"\n🚀 Resuming {book_dir.name} from chunk {start_chunk}")
     print(f"🎤 Voice: {voice_path.name}")

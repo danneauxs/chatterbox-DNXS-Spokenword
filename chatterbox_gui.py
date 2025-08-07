@@ -1167,22 +1167,22 @@ class ChatterboxMainWindow(QMainWindow):
 
         # Chapter/Section silence
         self.silence_chapter_start_spin = QSpinBox()
-        self.silence_chapter_start_spin.setRange(0, 2000)
+        self.silence_chapter_start_spin.setRange(0, 9999)
         self.silence_chapter_start_spin.setValue(SILENCE_CHAPTER_START)
         self.silence_chapter_start_spin.setMaximumWidth(60)
 
         self.silence_chapter_end_spin = QSpinBox()
-        self.silence_chapter_end_spin.setRange(0, 2000)
+        self.silence_chapter_end_spin.setRange(0, 9999)
         self.silence_chapter_end_spin.setValue(SILENCE_CHAPTER_END)
         self.silence_chapter_end_spin.setMaximumWidth(60)
 
         self.silence_section_spin = QSpinBox()
-        self.silence_section_spin.setRange(0, 1000)
+        self.silence_section_spin.setRange(0, 9999)
         self.silence_section_spin.setValue(SILENCE_SECTION_BREAK)
         self.silence_section_spin.setMaximumWidth(60)
 
         self.silence_paragraph_spin = QSpinBox()
-        self.silence_paragraph_spin.setRange(0, 1000)
+        self.silence_paragraph_spin.setRange(0, 9999)
         self.silence_paragraph_spin.setValue(SILENCE_PARAGRAPH_END)
         self.silence_paragraph_spin.setMaximumWidth(60)
 
@@ -1200,22 +1200,22 @@ class ChatterboxMainWindow(QMainWindow):
 
         # Punctuation silence
         self.silence_comma_spin = QSpinBox()
-        self.silence_comma_spin.setRange(0, 500)
+        self.silence_comma_spin.setRange(0, 9999)
         self.silence_comma_spin.setValue(SILENCE_COMMA)
         self.silence_comma_spin.setMaximumWidth(60)
 
         self.silence_period_spin = QSpinBox()
-        self.silence_period_spin.setRange(0, 500)
+        self.silence_period_spin.setRange(0, 9999)
         self.silence_period_spin.setValue(SILENCE_PERIOD)
         self.silence_period_spin.setMaximumWidth(60)
 
         self.silence_question_spin = QSpinBox()
-        self.silence_question_spin.setRange(0, 500)
+        self.silence_question_spin.setRange(0, 9999)
         self.silence_question_spin.setValue(SILENCE_QUESTION_MARK)
         self.silence_question_spin.setMaximumWidth(60)
 
         self.silence_exclamation_spin = QSpinBox()
-        self.silence_exclamation_spin.setRange(0, 500)
+        self.silence_exclamation_spin.setRange(0, 9999)
         self.silence_exclamation_spin.setValue(SILENCE_EXCLAMATION)
         self.silence_exclamation_spin.setMaximumWidth(60)
 
@@ -1234,7 +1234,7 @@ class ChatterboxMainWindow(QMainWindow):
         # Chunk silence settings
         self.chunk_end_silence_check = QCheckBox("Chunk End Silence")
         self.chunk_end_silence_spin = QSpinBox()
-        self.chunk_end_silence_spin.setRange(0, 1000)
+        self.chunk_end_silence_spin.setRange(0, 9999)
         self.chunk_end_silence_spin.setValue(CHUNK_END_SILENCE_MS)
         self.chunk_end_silence_spin.setMaximumWidth(60)
 
@@ -1699,10 +1699,6 @@ class ChatterboxMainWindow(QMainWindow):
 
         layout.addWidget(voice_group)
 
-        # Speed/Temp setting note
-        speed_note = QLabel("⚡ Speed Setting: Uses temperature setting from Config Tab")
-        speed_note.setStyleSheet("background-color: #fff3cd; padding: 8px; border: 1px solid #ffeaa7; color: #856404; border-radius: 4px;")
-        layout.addWidget(speed_note)
 
         # Generation controls
         generate_group = QGroupBox("🎵 Audio Generation")
@@ -2282,12 +2278,17 @@ class ChatterboxMainWindow(QMainWindow):
             # Extract enable_asr from tts_params
             enable_asr = tts_params.get('enable_asr', False)
 
+            # Detect best available device
+            from modules.tts_engine import get_best_available_device
+            device = get_best_available_device()
+            print(f"🖥️ Using device: {device.upper()}")
+            
             # Call the TTS engine with all parameters
             result = process_book_folder(
                 book_dir=book_path,
                 voice_path=voice_path,
                 tts_params=tts_params,
-                device="cuda",
+                device=device,
                 skip_cleanup=False,
                 enable_asr=enable_asr,
                 quality_params=quality_params,
@@ -3282,7 +3283,6 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
                 'ENABLE_AUDIO_TRIMMING': self.audio_trimming_check.isChecked(),
                 'SPEECH_ENDPOINT_THRESHOLD': self.speech_threshold_spin.value(),
                 'TRIMMING_BUFFER_MS': self.trimming_buffer_spin.value(),
-                'ATEMPO_SPEED': self.main_playback_speed_spin.value(),
                 'DEFAULT_EXAGGERATION': self.default_exag_spin.value(),
                 'DEFAULT_CFG_WEIGHT': self.default_cfg_spin.value(),
                 'DEFAULT_TEMPERATURE': self.default_temp_spin.value(),
@@ -3295,6 +3295,17 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
                 'TTS_PARAM_MAX_CFG_WEIGHT': self.cfg_max_spin.value(),
                 'TTS_PARAM_MIN_TEMPERATURE': self.temp_min_spin.value(),
                 'TTS_PARAM_MAX_TEMPERATURE': self.temp_max_spin.value(),
+                # Silence settings
+                'SILENCE_CHAPTER_START': self.silence_chapter_start_spin.value(),
+                'SILENCE_CHAPTER_END': self.silence_chapter_end_spin.value(),
+                'SILENCE_SECTION_BREAK': self.silence_section_spin.value(),
+                'SILENCE_PARAGRAPH_END': self.silence_paragraph_spin.value(),
+                'SILENCE_COMMA': self.silence_comma_spin.value(),
+                'SILENCE_PERIOD': self.silence_period_spin.value(),
+                'SILENCE_QUESTION_MARK': self.silence_question_spin.value(),
+                'SILENCE_EXCLAMATION': self.silence_exclamation_spin.value(),
+                'ENABLE_CHUNK_END_SILENCE': self.chunk_end_silence_check.isChecked(),
+                'CHUNK_END_SILENCE_MS': self.chunk_end_silence_spin.value(),
             }
             
             # Update config content
@@ -3312,11 +3323,38 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
             self.log_output("💾 Configuration saved to config/config.py")
             self.log_output(f"📁 Backup created: {backup_path}")
             
+            # Reload the config module and dependent modules to apply changes immediately
+            import importlib
+            try:
+                from config import config
+                importlib.reload(config)
+                self.log_output("🔄 Configuration module reloaded")
+                
+                # Also reload modules that import from config to update their cached values
+                modules_to_reload = [
+                    'modules.text_processor',
+                    'modules.tts_engine',
+                    'modules.audio_processor'
+                ]
+                
+                for module_name in modules_to_reload:
+                    try:
+                        if module_name in sys.modules:
+                            module = sys.modules[module_name]
+                            importlib.reload(module)
+                            self.log_output(f"🔄 Reloaded {module_name}")
+                    except Exception as mod_reload_error:
+                        self.log_output(f"⚠️  Warning: Failed to reload {module_name}: {mod_reload_error}")
+                
+                self.log_output("✅ All configuration changes are now active")
+            except Exception as reload_error:
+                self.log_output(f"⚠️  Warning: Config saved but reload failed: {reload_error}")
+            
             # Reset unsaved changes flag and update original values
             self.config_has_unsaved_changes = False
             self.save_original_config_values()
             
-            QMessageBox.information(self, "Success", "Configuration saved successfully!\n\nBackup created at config/config.py.backup")
+            QMessageBox.information(self, "Success", "Configuration saved and reloaded successfully!\n\nBackup created at config/config.py.backup")
             
         except Exception as e:
             self.log_output(f"❌ Error saving config: {e}")
