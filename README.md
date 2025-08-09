@@ -6,6 +6,9 @@
 
 A comprehensive TTS audiobook production system built on ChatterboxTTS with multiple interfaces and deployment options.
 
+Joinn Our Discord Channel
+https://discord.gg/yeygnAvb
+
 ## 🚀 Quick Start Options
 
 Choose your preferred interface:
