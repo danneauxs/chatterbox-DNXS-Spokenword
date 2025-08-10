@@ -27,8 +27,10 @@ audio_chunks/
 InputAudio/
 InputVoice/
 
-# Include demo voice samples
-# Voice_Samples/ - include all demo samples for users
+# Keep only sample voice files (you'll manually curate these)
+Voice_Samples/*
+!Voice_Samples/sample_*.wav
+!Voice_Samples/README.md
 
 # Text Input Books (users add their own)
 Text_Input/
@@ -62,17 +64,19 @@ SESSION_STATE.md*
 CLAUDE_CHANGES.log*
 Tree*
 
-
-# Claude AI Development Files (keep locally but don't publish)
-CLAUDE.md*
-.claude/
-
 # Backup Directories
 Backups/
 ARCHIVED/
 archived/
 GenTTS_Batch/
 Projects/
+
+# Gradio Development Files
+gradio_project.txt
+
+
+# Keep Gradio Backups (Important for Development)
+# gradio_backups/ - Keep these for rollback capability
 
 # FFmpeg and Audio Processing Temp
 *.m4b.tmp

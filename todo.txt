@@ -1,0 +1,131 @@
+# ChatterboxTTS Improvement Suggestions
+
+## Voice Sample Quality Enhancement
+- [ ] Experiment with multiple voice samples for better conditioning
+- [ ] Use longer samples (30+ seconds vs shorter clips)
+- [ ] Implement clean audio preprocessing (noise reduction, normalization)
+- [ ] Create emotional variety in reference samples to match VADER sentiment ranges
+- [ ] Test if ChatterboxTTS supports multiple reference samples per voice
+
+## VADER Parameter Tuning
+- [ ] A/B test different VADER_EXAGGERATION_SENSITIVITY values
+- [ ] Optimize VADER_CFG_WEIGHT_SENSITIVITY for more natural emotional transitions
+- [ ] Experiment with VADER_TEMPERATURE_SENSITIVITY settings
+- [ ] Test parameter combinations for more natural emotional flow
+
+## Voice Processing Pipeline Optimization
+- [ ] Refine XTTS fine-tuned sample → ref.wav → ChatterboxTTS workflow
+- [ ] Apply spectral enhancement to ref.wav files
+- [ ] Normalize ref.wav files for optimal ChatterboxTTS conditioning
+- [ ] Create pitch/speed variations of ref.wav for different emotional contexts
+
+## Advanced Conditioning Experiments
+- [ ] Test emotional conditioning with different ref samples for happy/sad/neutral
+- [ ] Implement context-aware voice selection for chapter-specific characteristics
+- [ ] Explore ChatterboxTTS prepare_conditionals() advanced features
+
+## Quality Improvements (Low Effort, High Impact)
+- [ ] Enhance hum detection algorithms
+- [ ] Add spectral cleaning of generated audio
+- [ ] Implement consistency matching between chunks
+- [ ] Add audio post-processing pipeline
+
+## VADER Smoothing Enhancement
+- [ ] Implement adaptive window sizes based on content type
+- [ ] Add chapter-aware smoothing (don't smooth across chapter boundaries)
+- [ ] Implement character dialogue detection with different emotional baselines
+- [ ] Test different smoothing methods and window sizes
+
+## Model Performance Optimization
+- [ ] Implement model warm-up with voice samples before processing
+- [ ] Add voice embedding caching between chunks
+- [ ] Test batching similar emotional chunks together
+- [ ] Optimize memory usage during long audiobook processing
+
+## Quick Test Priority
+- [ ] Create 3 versions of best XTTS fine-tuned ref.wav: neutral, happy (+10% pitch), sad (-10% pitch)
+- [ ] Map emotional ref.wav versions to VADER sentiment ranges in chunk processing
+- [ ] A/B test multiple reference approach against single reference
+- [ ] Document quality differences and optimal configurations
+
+## Research/Analysis
+- [ ] Identify specific voice quality issues currently experienced
+- [ ] Benchmark current system performance metrics
+- [ ] Document which voices work best with current pipeline
+- [ ] Analyze correlation between VADER scores and actual audio quality
+
+## Voice Sample Preparation System - New High Priority Todos
+
+## Audio Quality Analysis & Cleanup
+- [ ] Design audio quality analysis pipeline for input audiobooks
+- [ ] Research audio cleanup/enhancement methods (conservative, voice-preserving)
+- [ ] Test memory-efficient audio cleanup methods for 8GB VRAM constraint
+- [ ] Implement quality decision tree for cleanup strategy selection
+
+## Advanced Emotion Analysis System  
+- [ ] Research advanced emotion analysis systems beyond VADER
+- [ ] Compare multi-dimensional emotion models (Plutchik's Wheel, Russell's Circumplex)
+- [ ] Investigate Hugging Face transformers for emotion classification
+- [ ] Test GoEmotions (27 categories) vs current VADER (1 dimension)
+- [ ] Design content type detection methods (dialogue vs narration)
+
+## Automated Emotional Voice Sample Extraction
+- [ ] Design 8GB VRAM-optimized Whisper large-v3 pipeline
+- [ ] Research chunked audio processing strategies (10-15 minute chunks)  
+- [ ] Implement audiobook + ebook forced alignment system
+- [ ] Create ASR-only fallback with manual formatting tools
+- [ ] Design voice sample extraction workflow with confidence scoring
+
+## Dynamic Voice Sample Switching System
+- [ ] Design emotional voice sample switching system
+- [ ] Create voice folder structure with emotional categories
+- [ ] Implement voice_profile.json system with TTS parameter optimization
+- [ ] Design grouped chunk processing by emotional category
+- [ ] Test chunk-level vs grouped processing approaches
+
+## Synthetic Voice Generation System (Tier 4)
+- [ ] Design preset TTS parameter library for each emotion
+- [ ] Create emotional text prompts optimized for ChatterboxTTS
+- [ ] Build synthetic generation UI with parameter spinners and real-time testing
+- [ ] Implement A/B testing system for parameter optimization
+- [ ] Design parameter discovery process for optimal emotional expression
+- [ ] Create generation workflow: preset → fine-tune → A/B test → save to library
+- [ ] Integrate dnxs-spokenword for consistent voice characteristics
+- [ ] Skip sentiment analysis pipeline for direct TTS parameter control
+
+## Integration & Testing
+- [ ] Integrate emotional voice library with existing TTS pipeline
+- [ ] Test voice processing speed variations investigation
+- [ ] Implement pre-warming and caching for consistent voice characteristics
+- [ ] Design A/B testing framework for quality comparison
+
+# User Thought Process Documentation
+
+## Voice Sample Quality Challenges
+"The big issue is the voice sample. If the narrator was available to provide multiple examples of each emotive state that would be great. Not happening. We have basically a static sample set. It's possible with hours of work and by ear to try to find examples of each state. It's possible to do what you suggest for some by adjusting pitch of a sample. What would be nice is something that could analyze audio input that is 30-120 min and flag corresponding example for each state we are looking for. Or something close enough that some simple manipulation will provide those samples."
+
+## Automated Processing Approach  
+"Time is not relevant in this case. This would be a one-time thing (fine tuning) for a voice sample. The resultant voice clips would be used in the actual TTS pipeline right?"
+
+## Audio Quality & Transcript Considerations
+"Possibly a transcript but not quite. If I use an audiobook for the voice input and have an ebook version that would be the closest to an actual transcript. Other than running ASR on the audio input. That would provide text output but not formatting I believe. I have only used ASR in my program to get a quality rating to see if an audio chunk needs to be regenerated. The system is good enough that I usually leave it disabled."
+
+## Hardware Optimization Insights
+"I have a nvidia 4060 with 8gb vram. But the xtts-finetune program requires 12gb vram but I got it to run by doing multiple epochs (10) with smaller batches and audio length. I know it doesn't translate but maybe a similar approach might help."
+
+## Advanced Processing Requirements
+"We'll also want to run an audio analysis on the audiobook input audio maybe to make sure it's the best quality. The provided audio will most likely be between 64-192K at 44khz (?) or whatever. But there is the possibility that some audio will be lower quality. Maybe some pre analysis before clip extraction. Maybe a tried and true cleanup method? If it doesn't work we use what we have. Also some audio might not have true-text accompaniment so we probably need an ASR extraction only step if needed. Then some manual formatting. Do you think we need the large v3 model?"
+
+## Multi-Tier Approach Strategy
+"So, we have a finetune method in the works to create sentiment clips. I believe this should be a stand alone program, but maybe invokable from the main program for integration. Stand alone because I will most likely have separate git repo for it to share. We also talked about an analysis method (better than we have) for existing clips that cannot be fine tuned. We also need some way possibly extract samples and alter them for sentiment (pitch, tempo and whatever else). There are probably more ways to make a clip sound excited or sad, altering just part of a sentence at the end, middle or beginning with pitch or tempo, or other methods rather than a whole clip."
+
+## Synthetic Generation Insight
+"Now for this, we probably do not want to use sentiment smoothing for these chunks. Do we even need vader or whatever we replace vader with. Possibly the raw TTS params and chatterbox's built in parser would work for individual sentiment. We'd have to have some calculated params for each sentiment as a starting point. So when we are doing synthetic generation we have a selector for each state (happy, sad etc) that loads params as a starting point. Then they can be altered by spinners for each test generation and we save the best to the voice library folder."
+
+# Notes
+- Current system: ChatterboxTTS with zeroshot cloning + VADER sentiment analysis
+- XTTS fine-tuning process on 20min samples → ref.wav works well
+- English-only focus, no need for multilingual support
+- Hybrid XTTS system determined not worth the complexity
+- Voice sample switching approach preferred over hybrid TTS system
+- One-time voice preparation process creates reusable emotional sample libraries
