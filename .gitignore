@@ -43,6 +43,8 @@ Text_Input/
 *.bak
 *~
 *.tmp
+*.txt
+session_summary.md
 
 # IDE and Editor Files
 .vscode/
