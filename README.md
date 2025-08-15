@@ -14,20 +14,24 @@ https://discord.gg/yeygnAvb
 Choose your preferred interface:
 
 - **🖥️ GUI Interface** - Stupidly Full-featured desktop application (PyQt5)
+
 - 
+
 - <img width="1202" height="804" alt="tab1" src="https://github.com/user-attachments/assets/d22d6744-f799-4faa-aa7c-3ffb2ec2d861" />
 
 - **💻 CLI Interface** - Command-line tool for automation and full featured
-- 
--<img width="614" height="376" alt=" cli" src="https://github.com/user-attachments/assets/832fd6ca-d528-40a0-9705-d9963e646dda" />
 
-
+- -<img width="614" height="376" alt=" cli" src="https://github.com/user-attachments/assets/832fd6ca-d528-40a0-9705-d9963e646dda" />
 
 - 
+
 - **🌐 Gradio** - Web interface for local use - Book conversion only
+
 - [DEMO  <img width="118" height="28" alt="image" src="https://github.com/user-attachments/assets/f56ef0df-6f76-4a99-a1f2-e708f40ee10b" />](https://huggingface.co/spaces/bobsackett/ChatterboxTTS-DNXS-Spokenwordv1)   <-- Click Icon!
 
-- **☁️ Cloud Deployment** - Deploy to HuggingFace Spaces or RunPod book conversion on
+- **☁️ Cloud Deployment** - Deploy to HuggingFace Spaces or RunPod 
+
+- **<mark>WINDOWS</mark>** - looking for someone to help with Windows 11 install - need precise details on changes, dependencies etc.  I will document and create install, just need someone who's done it to share.
 
 ---
 
