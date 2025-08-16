@@ -43,8 +43,6 @@ Text_Input/
 *.bak
 *~
 *.tmp
-*.txt
-session_summary.md
 
 # IDE and Editor Files
 .vscode/
@@ -65,6 +63,14 @@ status_check.py
 SESSION_STATE.md*
 CLAUDE_CHANGES.log*
 Tree*
+session_summary.md
+ls.txt
+PYTHON_FILE_MAP.md
+WORKFLOW_MAPPING.md
+enhancement.txt
+session_summary.md
+todo.txt
+
 
 # Backup Directories
 Backups/

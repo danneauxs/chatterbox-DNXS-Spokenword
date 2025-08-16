@@ -211,7 +211,7 @@ class ChatterboxTTS:
             caching_available = True
         except ImportError:
             caching_available = False
-            logging.warning("Voice embedding caching not available - using standard processing")
+            # logging.warning("Voice embedding caching not available - using standard processing")
 
         # Check cache if caching is enabled and available
         if caching_available and ENABLE_VOICE_EMBEDDING_CACHE:
@@ -349,3 +349,67 @@ class ChatterboxTTS:
             wav = wav.squeeze(0).detach().cpu().numpy()
             watermarked_wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
         return torch.from_numpy(watermarked_wav).unsqueeze(0)
+
+    def generate_batch(
+        self,
+        texts: list[str],
+        audio_prompt_path=None,
+        exaggeration=0.5,
+        cfg_weight=0.5,
+        temperature=0.8,
+        min_p=0.05,
+        top_p=0.8,
+        repetition_penalty=2.0,
+    ):
+        if audio_prompt_path:
+            self.prepare_conditionals(audio_prompt_path, exaggeration=exaggeration)
+        else:
+            assert self.conds is not None, "Please `prepare_conditionals` first or specify `audio_prompt_path`"
+
+        if exaggeration != self.conds.t3.emotion_adv[0, 0, 0]:
+            _cond: T3Cond = self.conds.t3
+            self.conds.t3 = T3Cond(
+                speaker_emb=_cond.speaker_emb,
+                cond_prompt_speech_tokens=_cond.cond_prompt_speech_tokens,
+                emotion_adv=exaggeration * torch.ones(1, 1, 1),
+            ).to(device=self.device)
+
+        norm_texts = [punc_norm(text) for text in texts]
+        text_tokens = [self.tokenizer.text_to_tokens(text) for text in norm_texts]
+
+        max_len = max(t.shape[1] for t in text_tokens)
+        text_tokens_padded = torch.stack([F.pad(t, (0, max_len - t.shape[1]), value=self.t3.hp.stop_text_token) for t in text_tokens])
+        text_tokens_padded = text_tokens_padded.squeeze(1).to(self.device)
+
+        if cfg_weight > 0.0:
+            text_tokens_padded = torch.cat([text_tokens_padded, text_tokens_padded], dim=0)
+
+        sot = self.t3.hp.start_text_token
+        text_tokens_padded = F.pad(text_tokens_padded, (1, 0), value=sot)
+
+        with torch.inference_mode():
+            speech_tokens_batch = self.t3.inference(
+                t3_cond=self.conds.t3,
+                text_tokens=text_tokens_padded,
+                max_new_tokens=1000,
+                temperature=temperature,
+                cfg_weight=cfg_weight,
+                min_p=min_p,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
+            )
+
+            wavs = []
+            for speech_tokens in speech_tokens_batch:
+                speech_tokens = drop_invalid_tokens(speech_tokens)
+                speech_tokens = speech_tokens[speech_tokens < 6561]
+                speech_tokens = speech_tokens.to(self.device)
+
+                wav, _ = self.s3gen.inference(
+                    speech_tokens=speech_tokens,
+                    ref_dict=self.conds.gen,
+                )
+                wav = wav.squeeze(0).detach().cpu().numpy()
+                watermarked_wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
+                wavs.append(torch.from_numpy(watermarked_wav).unsqueeze(0))
+        return wavs

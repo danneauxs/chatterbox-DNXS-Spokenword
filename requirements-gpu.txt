@@ -1,8 +1,11 @@
-# ChatterboxTTS Requirements - Complete dependency list
-# Updated for distributed deployment - handles all systems
+# ChatterboxTTS Requirements - GPU Version
+# Complete dependency list for CUDA-enabled local development
 
-# Core ML and TTS - PyTorch (installed separately by installer based on GPU/CPU detection)
-# torch and torchaudio versions determined automatically by install.sh
+# Core ML and TTS - CUDA builds (installed separately via install script)
+# torch==2.6.0+cu124
+# torchaudio==2.6.0+cu124
+
+# Core dependencies
 transformers==4.46.3
 huggingface_hub>=0.15.0
 safetensors>=0.3.0
@@ -34,7 +37,6 @@ gradio>=4.0.0
 # GUI Support - Local development
 PyQt5>=5.15.0
 PyQt5-sip>=12.0.0
-pygame>=2.0.0
 
 # Progress and logging
 tqdm>=4.60.0

@@ -23,6 +23,12 @@ from PyQt5.QtGui import QFont, QPixmap, QIcon
 
 # Import the existing modules
 from config.config import *
+from interface import main as interface_main
+from modules.resume_handler import find_incomplete_books
+from tools.combine_only import run_combine_only_mode
+from wrapper.chunk_tool import run_chunk_repair_tool
+from utils.generate_from_json import main as generate_from_json_main
+from modules.tts_engine import process_book_folder
 
 # Import voice analyzer
 try:
@@ -48,10 +54,13 @@ class StructuredStatusPanel(QGroupBox):
         
         # Status fields
         self.operation_label = QLabel("⏸ Ready")
+        self.device_label = QLabel("🔍 Detecting...")
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.elapsed_label = QLabel("0:00:00")
-        self.eta_label = QLabel("--:--:--")
+        
+# Audio controls moved to main button area next to Regenerate M4B
+        
         self.remaining_label = QLabel("--:--:--")
         self.realtime_label = QLabel("--")
         self.vram_label = QLabel("-- GB")
@@ -59,9 +68,10 @@ class StructuredStatusPanel(QGroupBox):
         
         # Add fields to layout
         layout.addRow("Current Operation:", self.operation_label)
+        layout.addRow("Device Status:", self.device_label)
         layout.addRow("Progress:", self.progress_bar)
         layout.addRow("Elapsed Time:", self.elapsed_label)
-        layout.addRow("Estimated Time:", self.eta_label)
+# Audio controls row removed from status panel
         layout.addRow("Time Remaining:", self.remaining_label)
         layout.addRow("Realtime Factor:", self.realtime_label)
         layout.addRow("VRAM Usage:", self.vram_label)
@@ -118,8 +128,7 @@ class StructuredStatusPanel(QGroupBox):
                 self.progress_bar.setVisible(False)
         if elapsed:
             self.elapsed_label.setText(elapsed)
-        if eta:
-            self.eta_label.setText(eta)
+        # ETA removed - replaced with audio controls
         if remaining:
             self.remaining_label.setText(remaining)
         if realtime:
@@ -134,11 +143,12 @@ class StructuredStatusPanel(QGroupBox):
         self.operation_label.setText("⏸ Ready")
         self.progress_bar.setVisible(False)
         self.elapsed_label.setText("0:00:00")
-        self.eta_label.setText("--:--:--")
         self.remaining_label.setText("--:--:--")
         self.realtime_label.setText("--")
         self.vram_label.setText("-- GB")
         self.current_chunk_label.setText("--")
+        
+# Audio controls are now in main button area, not status panel
 
 
 class ChunkingTestWindow(QDialog):
@@ -205,12 +215,6 @@ class ChunkingTestWindow(QDialog):
         clipboard = QApplication.clipboard()
         clipboard.setText(self.text_display.toPlainText())
         QMessageBox.information(self, "Copied", "Chunking results copied to clipboard!")
-from interface import main as interface_main
-from modules.resume_handler import find_incomplete_books
-from tools.combine_only import run_combine_only_mode
-from wrapper.chunk_tool import run_chunk_repair_tool
-from utils.generate_from_json import main as generate_from_json_main
-from modules.tts_engine import process_book_folder
 
 
 class ProcessThread(QThread):
@@ -498,6 +502,8 @@ class ChatterboxMainWindow(QMainWindow):
 
         layout.addLayout(voice_layout)
 
+        
+
         # VADER and ASR Settings
         vader_layout = QVBoxLayout()
 
@@ -681,6 +687,18 @@ class ChatterboxMainWindow(QMainWindow):
 
         layout.addWidget(quality_container)
 
+
+        # NEW: Random Seed (moved for visibility)
+        seed_layout = QHBoxLayout()
+        seed_layout.addWidget(QLabel("Random Seed (0 for random):"))
+        self.seed_spin = QSpinBox()
+        self.seed_spin.setRange(0, 999999999)
+        self.seed_spin.setValue(DEFAULT_SEED)
+        self.seed_spin.setMaximumWidth(100)
+        seed_layout.addWidget(self.seed_spin)
+        seed_layout.addStretch()
+        layout.addLayout(seed_layout)
+
         # TTS Parameters - Side by Side Layout
         params_container = QHBoxLayout()
 
@@ -744,6 +762,8 @@ class ChatterboxMainWindow(QMainWindow):
         self.repetition_penalty_spin.setMaximumWidth(100)
         sampling_layout.addRow("Rep. Penalty:", self.repetition_penalty_spin)
 
+        
+
         # Add groups to side-by-side layout
         # Create containers for the parameter sections
         tts_widget = QWidget()
@@ -752,6 +772,24 @@ class ChatterboxMainWindow(QMainWindow):
         sampling_widget = QWidget()
         sampling_widget.setLayout(sampling_layout)
 
+        # NEW: Presets (moved to be above TTS Parameters)
+        preset_group = QGroupBox("⚡ Load TTS Presets")
+        preset_group.setStyleSheet("QGroupBox { font-weight: bold; color: #2196F3; }")
+        preset_layout = QHBoxLayout(preset_group)
+        
+        preset_layout.addWidget(QLabel("Select Preset:"))
+        self.preset_combo = QComboBox()
+        self.preset_combo.addItems(list(TTS_PRESETS.keys()))
+        preset_layout.addWidget(self.preset_combo)
+        
+        self.apply_preset_btn = QPushButton("Apply Preset")
+        self.apply_preset_btn.setStyleSheet("QPushButton { background-color: #2196F3; color: white; font-weight: bold; padding: 5px; }")
+        preset_layout.addWidget(self.apply_preset_btn)
+        preset_layout.addStretch()
+        
+        # Add preset group to main layout
+        layout.addWidget(preset_group)
+        
         params_container.addWidget(tts_widget)
         params_container.addWidget(sampling_widget)
         layout.addLayout(params_container)
@@ -768,6 +806,9 @@ class ChatterboxMainWindow(QMainWindow):
         self.asr_checkbox.stateChanged.connect(self.handle_asr_toggle)
         self.analyze_system_btn.clicked.connect(self.analyze_system)
         self.asr_level_group.buttonClicked.connect(self.update_asr_models)
+
+        # NEW: Preset Handler
+        self.apply_preset_btn.clicked.connect(self.apply_preset)
 
         # Batch processing checkbox moved to button row
         self.add_to_batch_checkbox = QCheckBox("📦 Add to batch queue")
@@ -796,22 +837,18 @@ class ChatterboxMainWindow(QMainWindow):
         self.regenerate_m4b_btn.setToolTip("Regenerate M4B file with new speed setting")
         button_layout.addWidget(self.regenerate_m4b_btn)
         
-        # Real-time processing status display
-        self.status_label = QLabel("⏸ Ready")
-        self.status_label.setStyleSheet("""
-            QLabel { 
-                background-color: #37474F; 
-                color: #E0E0E0; 
-                padding: 6px 12px; 
-                border-radius: 4px; 
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 11px;
-                border: 1px solid #546E7A;
-            }
-        """)
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setMinimumWidth(400)
-        button_layout.addWidget(self.status_label)
+        # Audio Controls (replaces green ETA display)
+        self.play_btn = QPushButton("▶️ Play M4B")
+        self.play_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 8px; }")
+        self.play_btn.setEnabled(False)
+        self.play_btn.clicked.connect(self.play_m4b_file)
+        self.play_btn.setToolTip("Open the generated M4B audiobook in system player")
+        button_layout.addWidget(self.play_btn)
+        
+        # Track current M4B file
+        self.current_m4b_file = None
+        
+# Redundant status display removed - information now in TTS generation status
         
         button_layout.addStretch()
 
@@ -820,6 +857,18 @@ class ChatterboxMainWindow(QMainWindow):
         # Add structured status panel for Tab 1
         self.tab1_status_panel = StructuredStatusPanel("🚀 TTS Generation Status")
         layout.addWidget(self.tab1_status_panel)
+        
+        # Detect and update device status
+        self.detect_and_update_device_status()
+        
+        # Connect audio control buttons
+# Audio button connections moved to main button area creation
+# Audio button connections moved to main button area creation
+        
+        # Initialize audio player state
+        self.audio_player = None
+        self.is_playing = False
+        self.current_m4b_file = None
         
         layout.addStretch()
 
@@ -861,7 +910,13 @@ class ChatterboxMainWindow(QMainWindow):
         self.batch_size_spin.setSingleStep(50)
         self.batch_size_spin.setValue(BATCH_SIZE)
         self.batch_size_spin.setMaximumWidth(60)
-        workers_layout.addRow("Batch Size:", self.batch_size_spin)
+        workers_layout.addRow("Reload Model Batch Size:", self.batch_size_spin)
+
+        self.tts_batch_size_spin = QSpinBox()
+        self.tts_batch_size_spin.setRange(1, 64)
+        self.tts_batch_size_spin.setValue(TTS_BATCH_SIZE if 'TTS_BATCH_SIZE' in globals() else 16)
+        self.tts_batch_size_spin.setMaximumWidth(60)
+        workers_layout.addRow("TTS Inference Batch Size:", self.tts_batch_size_spin)
 
         # Min/Max Words Group
         words_group = QGroupBox()
@@ -1113,6 +1168,8 @@ class ChatterboxMainWindow(QMainWindow):
         vader_desc.setStyleSheet("font-size: 10px; color: #666; margin: 5px;")
         vader_desc.setWordWrap(True)
         vader_layout.addRow(vader_desc)
+
+        
 
         # VADER Sensitivity
         self.vader_exag_sens_spin = QDoubleSpinBox()
@@ -2004,6 +2061,42 @@ class ChatterboxMainWindow(QMainWindow):
         except Exception as e:
             self.selected_models_text.setPlainText(f"❌ Error getting models: {str(e)}")
 
+    def apply_preset(self):
+        preset_name = self.preset_combo.currentText()
+        self.log_output(f"🔧 DEBUG: apply_preset called with preset: {preset_name}")
+        
+        if preset_name not in TTS_PRESETS:
+            self.log_output(f"❌ ERROR: Preset '{preset_name}' not found in TTS_PRESETS")
+            self.log_output(f"Available presets: {list(TTS_PRESETS.keys())}")
+            return
+
+        preset = TTS_PRESETS[preset_name]
+        self.log_output(f"📋 DEBUG: Preset data: {preset}")
+
+        try:
+            self.vader_checkbox.setChecked(preset.get("vader_enabled", True))
+            self.sentiment_smoothing_checkbox.setChecked(preset.get("sentiment_smoothing", True))
+            self.smoothing_window_spin.setValue(preset.get("smoothing_window", 3))
+            self.smoothing_method_combo.setCurrentText(preset.get("smoothing_method", "rolling"))
+            self.exaggeration_spin.setValue(preset.get("exaggeration", DEFAULT_EXAGGERATION))
+            self.cfg_weight_spin.setValue(preset.get("cfg_weight", DEFAULT_CFG_WEIGHT))
+            self.temperature_spin.setValue(preset.get("temperature", DEFAULT_TEMPERATURE))
+            self.min_p_spin.setValue(preset.get("min_p", DEFAULT_MIN_P))
+            self.top_p_spin.setValue(preset.get("top_p", DEFAULT_TOP_P))
+            self.repetition_penalty_spin.setValue(preset.get("repetition_penalty", DEFAULT_REPETITION_PENALTY))
+            
+            # Debug seed specifically
+            seed_value = preset.get("seed", DEFAULT_SEED)
+            self.log_output(f"🎲 DEBUG: Setting seed to: {seed_value}")
+            self.seed_spin.setValue(seed_value)
+            self.log_output(f"🎲 DEBUG: Seed spinbox now shows: {self.seed_spin.value()}")
+
+            self.log_output(f"✅ Applied preset: {preset_name}")
+        except Exception as e:
+            self.log_output(f"❌ ERROR applying preset: {str(e)}")
+            import traceback
+            self.log_output(f"🔍 Traceback: {traceback.format_exc()}")
+
     def browse_combine_book(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Book Folder to Combine")
         if folder:
@@ -2028,79 +2121,10 @@ class ChatterboxMainWindow(QMainWindow):
     # Action Methods
 
     def update_status_display(self, status_text):
-        """Update the real-time status display"""
-        if status_text:
-            # Parse status text for key information
-            if "Elapsed:" in status_text and "ETA:" in status_text:
-                # Extract the status info and format nicely
-                self.status_label.setText(f"⏱ {status_text.strip()}")
-                self.status_label.setStyleSheet("""
-                    QLabel { 
-                        background-color: #2E7D32; 
-                        color: #C8E6C9; 
-                        padding: 6px 12px; 
-                        border-radius: 4px; 
-                        font-family: 'Consolas', 'Monaco', monospace;
-                        font-size: 11px;
-                        border: 1px solid #4CAF50;
-                    }
-                """)
-            elif "Processing" in status_text or "Generating" in status_text:
-                self.status_label.setText(f"🔄 {status_text.strip()}")
-                self.status_label.setStyleSheet("""
-                    QLabel { 
-                        background-color: #1565C0; 
-                        color: #BBDEFB; 
-                        padding: 6px 12px; 
-                        border-radius: 4px; 
-                        font-family: 'Consolas', 'Monaco', monospace;
-                        font-size: 11px;
-                        border: 1px solid #2196F3;
-                    }
-                """)
-            elif "Error" in status_text or "Failed" in status_text:
-                self.status_label.setText(f"❌ {status_text.strip()}")
-                self.status_label.setStyleSheet("""
-                    QLabel { 
-                        background-color: #C62828; 
-                        color: #FFCDD2; 
-                        padding: 6px 12px; 
-                        border-radius: 4px; 
-                        font-family: 'Consolas', 'Monaco', monospace;
-                        font-size: 11px;
-                        border: 1px solid #F44336;
-                    }
-                """)
-            elif "Complete" in status_text or "Finished" in status_text:
-                self.status_label.setText(f"✅ {status_text.strip()}")
-                self.status_label.setStyleSheet("""
-                    QLabel { 
-                        background-color: #388E3C; 
-                        color: #C8E6C9; 
-                        padding: 6px 12px; 
-                        border-radius: 4px; 
-                        font-family: 'Consolas', 'Monaco', monospace;
-                        font-size: 11px;
-                        border: 1px solid #4CAF50;
-                    }
-                """)
-            else:
-                # Default status
-                self.status_label.setText(status_text.strip())
-        else:
-            # Reset to ready state
-            self.status_label.setText("⏸ Ready")
-            self.status_label.setStyleSheet("""
-                QLabel { 
-                    background-color: #37474F; 
-                    color: #E0E0E0; 
-                    padding: 6px 12px; 
-                    border-radius: 4px; 
-                    font-family: 'Consolas', 'Monaco', monospace;
-                    font-size: 11px;
-                    border: 1px solid #546E7A;
-                }
-            """)
+        """Update the status display - now uses TTS generation status panel"""
+        # Status information is now handled by the TTS generation status panel
+        # This method is kept for compatibility but no longer displays anything
+        pass
 
     def start_conversion(self):
         """Button click handler - validates inputs and starts conversion"""
@@ -2166,7 +2190,8 @@ class ChatterboxMainWindow(QMainWindow):
             'top_p': self.top_p_spin.value(),
             'repetition_penalty': self.repetition_penalty_spin.value(),
             'use_vader': use_vader,
-            'enable_asr': asr_config.get('enabled', False)  # Match GUI pattern
+            'enable_asr': asr_config.get('enabled', False),
+            'seed': self.seed_spin.value()  # Match GUI pattern
         }
 
         # Collect quality enhancement parameters
@@ -2187,6 +2212,7 @@ class ChatterboxMainWindow(QMainWindow):
         config_params = {
             'max_workers': self.workers_spin.value(),
             'batch_size': self.batch_size_spin.value(),
+            'tts_batch_size': self.tts_batch_size_spin.value(),
             'min_chunk_words': self.min_chunk_words_spin.value(),
             'max_chunk_words': self.max_chunk_words_spin.value(),
             'enable_mid_drop_check': self.mid_drop_check.isChecked(),
@@ -2242,6 +2268,10 @@ class ChatterboxMainWindow(QMainWindow):
             self.tab1_status_panel.reset()
             self.tab1_status_panel.update_status(operation="🚀 Starting conversion...")
             
+        # Reset audio controls
+        if hasattr(self, 'play_btn'):
+            self.play_btn.setEnabled(False)
+            
             # Auto-scroll main tab container to show status panel at bottom
             if hasattr(self, 'main_scroll_area'):
                 # Use QTimer to ensure layout is updated, then scroll to bottom
@@ -2254,6 +2284,11 @@ class ChatterboxMainWindow(QMainWindow):
         # Disable the button during processing
         self.convert_btn.setEnabled(False)
         self.convert_btn.setText("🔄 Processing...")
+        
+        # Disable audio controls during new conversion
+        # Audio controls reset moved to above
+        # Audio controls reset moved to above
+        self.current_m4b_file = None
 
         # Start processing in background thread
         self.process_thread = ProcessThread(
@@ -3110,6 +3145,32 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         if success:
             self.log_output("✅ Conversion completed successfully!")
             self.update_status_display("✅ Conversion completed successfully!")
+            
+            # Find and enable audio controls for the newly generated M4B file
+            from pathlib import Path
+            book_path = Path(self.book_path_edit.text())
+            voice_path = Path(self.voice_path_edit.text())
+            
+            # M4B is created in Audiobook/BookName/ directory with pattern: BookName[VoiceName].m4b
+            audiobook_dir = Path("Audiobook") / book_path.name
+            expected_m4b_name = f"{book_path.name}[{voice_path.stem}].m4b"
+            generated_m4b = audiobook_dir / expected_m4b_name
+            
+            # Also check for files with space in the pattern: "BookName [VoiceName].m4b"
+            alt_m4b_name = f"{book_path.name} [{voice_path.stem}].m4b"
+            alt_generated_m4b = audiobook_dir / alt_m4b_name
+            
+            if generated_m4b.exists():
+                self.current_m4b_file = generated_m4b
+                self.play_btn.setEnabled(True)
+                self.log_output(f"🎵 Audio controls enabled for: {generated_m4b.name}")
+            elif alt_generated_m4b.exists():
+                self.current_m4b_file = alt_generated_m4b
+                self.play_btn.setEnabled(True)
+                self.log_output(f"🎵 Audio controls enabled for: {alt_generated_m4b.name}")
+            else:
+                self.log_output(f"⚠️ Could not find generated M4B at: {generated_m4b} or {alt_generated_m4b}")
+            
             QMessageBox.information(self, "Success", "Book conversion completed successfully!")
         else:
             self.log_output(f"❌ Conversion failed: {message}")
@@ -3121,6 +3182,7 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         # Performance settings
         self.workers_spin.setValue(MAX_WORKERS)
         self.batch_size_spin.setValue(BATCH_SIZE)
+        self.tts_batch_size_spin.setValue(TTS_BATCH_SIZE if 'TTS_BATCH_SIZE' in globals() else 16)
         self.min_chunk_words_spin.setValue(MIN_CHUNK_WORDS)
         self.max_chunk_words_spin.setValue(MAX_CHUNK_WORDS)
 
@@ -3175,6 +3237,7 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         self.original_config_values = {
             'workers': self.workers_spin.value(),
             'batch_size': self.batch_size_spin.value(),
+            'tts_batch_size': self.tts_batch_size_spin.value(),
             'min_chunk_words': self.min_chunk_words_spin.value(),
             'max_chunk_words': self.max_chunk_words_spin.value(),
             'normalization': self.normalization_check.isChecked(),
@@ -3201,7 +3264,7 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         """Connect all config widgets to change tracking"""
         # Connect spinboxes to change tracking
         config_widgets = [
-            self.workers_spin, self.batch_size_spin, self.min_chunk_words_spin, 
+            self.workers_spin, self.batch_size_spin, self.tts_batch_size_spin, self.min_chunk_words_spin, 
             self.max_chunk_words_spin, self.target_lufs_spin, self.speech_threshold_spin,
             self.trimming_buffer_spin, self.default_exag_spin, self.default_cfg_spin,
             self.default_temp_spin, self.vader_exag_sens_spin, self.vader_cfg_sens_spin,
@@ -3272,6 +3335,7 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
             gui_values = {
                 'MAX_WORKERS': self.workers_spin.value(),
                 'BATCH_SIZE': self.batch_size_spin.value(),
+                'TTS_BATCH_SIZE': self.tts_batch_size_spin.value(),
                 'MIN_CHUNK_WORDS': self.min_chunk_words_spin.value(),
                 'MAX_CHUNK_WORDS': self.max_chunk_words_spin.value(),
                 'ENABLE_MID_DROP_CHECK': self.mid_drop_check.isChecked(),
@@ -3359,6 +3423,54 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         except Exception as e:
             self.log_output(f"❌ Error saving config: {e}")
             QMessageBox.critical(self, "Error", f"Failed to save configuration:\n{e}")
+
+
+    def play_m4b_file(self):
+        """Open the generated M4B file in system default player"""
+        self.log_output("🔍 Play M4B button clicked")
+        try:
+            if not self.current_m4b_file:
+                self.log_output("❌ No M4B file available to play")
+                return
+                
+            # Use system default player to open M4B file
+            import subprocess
+            import sys
+            
+            if sys.platform == "win32":
+                subprocess.Popen(["start", str(self.current_m4b_file)], shell=True)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(self.current_m4b_file)])
+            else:  # Linux
+                subprocess.Popen(["xdg-open", str(self.current_m4b_file)])
+            
+            self.log_output(f"🎵 Opened in system player: {self.current_m4b_file.name}")
+                
+        except Exception as e:
+            self.log_output(f"❌ Error opening M4B file: {e}")
+
+
+    def detect_and_update_device_status(self):
+        """Detect and update device status in the GUI"""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+                device_text = f"🚀 GPU: {gpu_name} ({gpu_memory:.1f}GB)"
+                self.tab1_status_panel.device_label.setStyleSheet("color: #4CAF50; font-weight: bold;")  # Green
+            else:
+                device_text = "💻 CPU (GPU not available)"
+                self.tab1_status_panel.device_label.setStyleSheet("color: #FF9800; font-weight: bold;")  # Orange
+            
+            self.tab1_status_panel.device_label.setText(device_text)
+            self.log_output(f"Device detected: {device_text}")
+            
+        except Exception as e:
+            device_text = "❌ Device Detection Failed"
+            self.tab1_status_panel.device_label.setText(device_text)
+            self.tab1_status_panel.device_label.setStyleSheet("color: #F44336; font-weight: bold;")  # Red
+            self.log_output(f"Device detection error: {e}")
 
     def log_output(self, message):
         """Add message to output log with ANSI code filtering"""

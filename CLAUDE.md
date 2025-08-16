@@ -200,3 +200,9 @@ python3 status_check.py
 - Tab #1 is currently the only functional tab in the system
 - Other tabs are not relevant at this time
 - Confirmed that tab 5 is not needed and can be disregarded
+
+### Memory Management Notes
+- 7 NO, only 4GB of 24 used. The others possibly. how can we determine which it is?
+
+### Performance Optimization Notes
+- 5 already tried. 1 worker runs slightly faster than multiple.

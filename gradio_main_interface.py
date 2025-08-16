@@ -46,6 +46,19 @@ from pathlib import Path
 # This ensures tab modules can be imported regardless of working directory
 sys.path.append(str(Path(__file__).parent))
 
+def detect_device_status():
+    """Detect and return device status information"""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+            return f"🚀 **GPU Active**: {gpu_name} ({gpu_memory:.1f}GB)", True
+        else:
+            return "💻 **CPU Mode**: GPU not available", False
+    except Exception as e:
+        return f"❌ **Device Detection Failed**: {e}", False
+
 # Import tab modules
 try:
     from gradio_tabs.tab1_convert_book import create_convert_book_tab
@@ -123,6 +136,10 @@ def create_main_interface():
         # 🎤 ChatterboxTTS - Complete Web Interface
         *Modular audiobook generation system with advanced TTS capabilities*
         """)
+        
+        # Device Status
+        device_text, is_gpu = detect_device_status()
+        gr.Markdown(f"**Device Status**: {device_text}")
 
         # Tab interface
         with gr.Tabs():

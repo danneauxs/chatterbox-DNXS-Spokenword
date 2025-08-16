@@ -23,7 +23,7 @@ MIN_CHUNK_WORDS = 4
 # WORKER AND PERFORMANCE SETTINGS
 # ============================================================================
 MAX_WORKERS = 2
-TEST_MAX_WORKERS = 6                  # For experimentation
+TEST_MAX_WORKERS = 2                  # For experimentation
 USE_DYNAMIC_WORKERS = False           # Toggle for testing
 VRAM_SAFETY_THRESHOLD = 6.5           # GB
 
@@ -140,6 +140,7 @@ CYAN = "\033[96m"
 DEFAULT_EXAGGERATION = 0.5
 DEFAULT_CFG_WEIGHT = 0.5
 DEFAULT_TEMPERATURE = 0.85
+DEFAULT_SEED = 0 # Random seed for generation. 0 means random.
 
 # Advanced Sampling Parameters (Min_P Sampler Support)
 DEFAULT_MIN_P = 0.05                   # Min probability threshold (0.0 disables)
@@ -186,9 +187,53 @@ TTS_PARAM_MIN_REPETITION_PENALTY = 1.0 # 1.0 = no penalty
 TTS_PARAM_MAX_REPETITION_PENALTY = 2.0 # Higher values too restrictive MAX 2
 
 # ============================================================================
+# TTS_PRESETS
+# ============================================================================
+TTS_PRESETS = {
+    "Narration": {
+        "exaggeration": 0.55,
+        "cfg_weight": 0.7,
+        "temperature": 0.85,
+        "min_p": 0.05,
+        "top_p": 1.0,
+        "repetition_penalty": 1.2,
+        "vader_enabled": True, # Default to VADER on for nuanced presets
+        "sentiment_smoothing": True,
+        "smoothing_window": 3,
+        "smoothing_method": "rolling",
+        "seed": 12345 # Unique seed for Narration preset
+    },
+    "Expressive": {
+        "exaggeration": 0.65,
+        "cfg_weight": 0.8,
+        "temperature": 0.95,
+        "min_p": 0.05,
+        "top_p": 1.0,
+        "repetition_penalty": 1.2,
+        "vader_enabled": True,
+        "sentiment_smoothing": True,
+        "smoothing_window": 3,
+        "smoothing_method": "rolling",
+        "seed": 67890 # Unique seed for Expressive preset
+    },
+    "Exposition": {
+        "exaggeration": 0.4,
+        "cfg_weight": 0.3,
+        "temperature": 0.55,
+        "min_p": 0.05,
+        "top_p": 1.0,
+        "repetition_penalty": 1.2,
+        "vader_enabled": False, # VADER off for consistent, clear delivery
+        "sentiment_smoothing": False,
+        "seed": 98765 # Unique seed for Exposition preset
+    }
+}
+
+# ============================================================================
 # BATCH PROCESSING SETTINGS
 # ============================================================================
 BATCH_SIZE = 400
+TTS_BATCH_SIZE = 16                   # Batch size for TTS inference when VADER is disabled
 CLEANUP_INTERVAL = 500                # Deep cleanup every N chunks (reduced frequency for speed)
 
 # ============================================================================
@@ -235,12 +280,12 @@ ENABLE_GPU_PERSISTENCE_MODE = False         # Try to enable GPU persistence mode
 GPU_PERSISTENCE_RETRY_COUNT = 3            # Retry attempts for persistence mode
 
 # CUDA Memory Pool - Advanced GPU memory management
-ENABLE_CUDA_MEMORY_POOL = True             # Enable CUDA memory pooling
+ENABLE_CUDA_MEMORY_POOL = False             # Enable CUDA memory pooling
 CUDA_MEMORY_POOL_FRACTION = 0.9            # Fraction of GPU memory to pool
 ENABLE_ADAPTIVE_MEMORY_POOL = True         # Adapt pool size to system
 
 # Producer-Consumer Pipeline - Eliminate chunk loading overhead
-ENABLE_PRODUCER_CONSUMER_PIPELINE = True   # Re-enabled with proper ETA tracking
+ENABLE_PRODUCER_CONSUMER_PIPELINE = False   # Re-enabled with proper ETA tracking
 PIPELINE_QUEUE_SIZE_MULTIPLIER = 3         # Queue size = workers * multiplier
 PIPELINE_MAX_QUEUE_SIZE = 20               # Maximum queue size limit
 ENABLE_PIPELINE_FALLBACK = True            # Fall back to sequential if pipeline fails
