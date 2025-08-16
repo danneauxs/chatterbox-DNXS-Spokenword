@@ -9,6 +9,16 @@ A comprehensive TTS audiobook production system built on ChatterboxTTS with mult
 Joinn Our Discord Channel
 https://discord.gg/yeygnAvb
 
+**WORK IN PROGRESS **- THERE MIGHT BE SOME FIDDILING REQUIRED. IF YOU FIDDLE 
+
+GO OVER TO THE DISCORD AND UPDATE SO I CAN FIX IT!
+
+
+
+**WANTED**: SOMEONE TO GET IT RUNNING ON WINDOWS AND GIVE FEEDBACK SO
+
+I CAN UPDATE THE INSTALL.
+
 ## 🚀 Quick Start Options
 
 Choose your preferred interface:
