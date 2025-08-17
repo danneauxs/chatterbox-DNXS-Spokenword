@@ -6,14 +6,12 @@
 
 A comprehensive TTS audiobook production system built on ChatterboxTTS with multiple interfaces and deployment options.
 
-Joinn Our Discord Channel
+Join Our Discord Channel
 https://discord.gg/yeygnAvb
 
 **WORK IN PROGRESS **- THERE MIGHT BE SOME FIDDILING REQUIRED. IF YOU FIDDLE 
 
 GO OVER TO THE DISCORD AND UPDATE SO I CAN FIX IT!
-
-
 
 **WANTED**: SOMEONE TO GET IT RUNNING ON WINDOWS AND GIVE FEEDBACK SO
 
@@ -54,6 +52,10 @@ Choose your preferred interface:
 - Virtual environment (recommended)
 
 ### Initial Setup
+
+NOTE: **<mark>FFMPEG</mark>** is require to be installed on your system in order for the program
+
+to create m4b output files.
 
 ```bash
 # Clone the repository
@@ -377,37 +379,47 @@ sudo apt install python3-pyqt5
 
 ### Basic Workflow
 
-1. **Prepare content:**
-   
-   - Add `.txt` file 
-     
-     in Text_Input/` (GUI/CLI mode only)
-     
-     Gradio uses upload from local
-   
-   - Add voice sample (24kHz WAV recommended)
-     
-     GUI/CLI use local file, Gradio uses upload
+Tab #1 is where the magic happens. 
 
-2. **Choose interface:**
-   
-   - GUI: `./launch_gui.sh`
+The other tabs are individual tools or settings that do only one step of the process. 
+
+**Use Tab 1 for all txt to audio conversion**s!
+
+**Choose interface:**
+
+1. - GUI: `./launch_gui.sh`
    - CLI: `./launch.sh` 
    - Web: `./launch_gradio_local.sh`
 
-3. **Process book:**
+2. **Process book:**
    
    - Select text file and voice
+     
+     In GUI use the browse buttons to select a folder containing your text.
+     
+     Then select the particualr text file in the dropdown.
+     
+     Then select a .wav file voice sample 
+     
+     Same for Gradio
+     
+     CLI requires all folders and txt files to be in the Text_Input folder (Foldername/*.txt file*)
+     
+     Note: book.jpg and book.nfo will be used to add a photo and meta data to the m4b if they are in the book folder.
    - Adjust parameters as needed
-   - Start conversion
+   - Start conversion 
    - Monitor progress
 
-4. **Get results:**
+3. **Get results:**
    
-   - Final audiobook in `Output/`
+   - m4b/wave should be in `Audiobook/[BookName]/`
+     
+     <mark>FFMPEG must be installed to get an m4b file!</mark>
    - Processing logs in `Audiobook/[BookName]/`
 
 ### Advanced Features
+
+Tabs 2+ are individual steps in the process that let you:
 
 - **Resume processing:** Use resume tools for interrupted jobs
 - **Chunk repair:** Fix individual problematic chunks
@@ -441,26 +453,16 @@ sudo apt install python3-pyqt5
 
 ### Professional Output
 
-- M4B audiobook format with metadata
+- M4B audiobook format with metadata 
 - Audio normalization and speed control
 - Cover art and book information embedding
 - Chapter marking and navigation
 
 ---
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)  
-5. Open Pull Request
-
----
-
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the same licence as the original program it was forked from.
 
 ---
 
@@ -476,8 +478,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 - **Issues:** [GitHub Issues](https://github.com/yourusername/ChatterboxTTS-DNXS-Spokenword/issues)
-- **Documentation:** [Wiki](https://github.com/yourusername/ChatterboxTTS-DNXS-Spokenword/wiki)
 - **Discussions:** [GitHub Discussions](https://github.com/yourusername/ChatterboxTTS-DNXS-Spokenword/discussions)
+- Join Our Discord Channel
+  https://discord.gg/yeygnAvb
 
 ---
 
