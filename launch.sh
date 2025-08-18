@@ -43,6 +43,18 @@ if [ -z "$VIRTUAL_ENV" ]; then
 fi
 
 echo "✅ Virtual environment activated: $VIRTUAL_ENV"
+
+# Check PyTorch CUDA compatibility
+if [ -f "$SCRIPT_DIR/scripts/check_cuda_compatibility.sh" ]; then
+    source "$SCRIPT_DIR/scripts/check_cuda_compatibility.sh"
+    if ! check_pytorch_cuda_compatibility; then
+        echo "❌ CUDA compatibility check failed"
+        exit 1
+    fi
+else
+    echo "⚠️ CUDA compatibility checker not found - skipping check"
+fi
+
 echo "▶️  Starting main_launcher.py..."
 echo ""
 

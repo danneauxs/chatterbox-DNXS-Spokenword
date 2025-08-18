@@ -107,9 +107,15 @@ if command -v nvidia-smi &> /dev/null; then
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
     echo "✅ NVIDIA GPU detected: $GPU_NAME"
     
-    # Extract CUDA version from nvidia-smi
-    CUDA_VERSION=$(nvidia-smi | grep "CUDA Version" | sed 's/.*CUDA Version: \([0-9]\+\.[0-9]\+\).*/\1/')
-    echo "✅ CUDA Version detected: $CUDA_VERSION"
+    # Extract CUDA runtime version from nvcc (more accurate than driver version)
+    if command -v nvcc >/dev/null 2>&1; then
+        CUDA_VERSION=$(nvcc --version | grep "release" | sed 's/.*release \([0-9]\+\.[0-9]\+\).*/\1/')
+        echo "✅ CUDA Runtime Version detected: $CUDA_VERSION (from nvcc)"
+    else
+        # Fallback to driver version if nvcc not available
+        CUDA_VERSION=$(nvidia-smi | grep "CUDA Version" | sed 's/.*CUDA Version: \([0-9]\+\.[0-9]\+\).*/\1/')
+        echo "✅ CUDA Driver Version detected: $CUDA_VERSION (from nvidia-smi - may not match runtime)"
+    fi
     
     # Map CUDA version to PyTorch version
     case "$CUDA_VERSION" in
@@ -132,6 +138,11 @@ if command -v nvidia-smi &> /dev/null; then
             TORCH_VERSION="torch==2.5.0+cu121 torchaudio==2.5.0+cu121"
             INDEX_URL="https://download.pytorch.org/whl/cu121"
             echo "✅ Using PyTorch 2.5.0 with CUDA 12.1"
+            ;;
+        "12.0")
+            TORCH_VERSION="torch==2.5.0+cu121 torchaudio==2.5.0+cu121"
+            INDEX_URL="https://download.pytorch.org/whl/cu121"
+            echo "✅ Using PyTorch 2.5.0 with CUDA 12.1 (compatible with CUDA 12.0)"
             ;;
         "11.8"|"11.9")
             TORCH_VERSION="torch==2.4.0+cu118 torchaudio==2.4.0+cu118"

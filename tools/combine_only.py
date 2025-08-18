@@ -119,6 +119,11 @@ def _perform_combine_operation(book_path, chunk_paths, total_duration, voice_nam
         convert_to_m4b(combined_wav_path, temp_m4b_path)
         add_metadata_to_m4b(temp_m4b_path, final_m4b_path, cover_file, nfo_file)
         print(f"✅ M4B audiobook created: {final_m4b_path.name}")
+    except FileNotFoundError as ffmpeg_error:
+        print(f"{RED}❌ FFmpeg not available - cannot create M4B audiobook{RESET}")
+        print(f"{YELLOW}📁 WAV file is available at: {combined_wav_path}{RESET}")
+        print(f"{YELLOW}💡 To create M4B files, install FFmpeg and try again{RESET}")
+        return False
     except Exception as e:
         print(f"{RED}❌ Failed to create M4B: {e}{RESET}")
         return False
@@ -332,57 +337,20 @@ def quick_combine(book_name):
     combine_audio_chunks(chunk_paths, combined_wav_path)
 
     temp_m4b_path = book_path / "temp_quick.m4b"
-    convert_to_m4b(combined_wav_path, temp_m4b_path)
-
-    # Simple M4B without metadata for quick operation
-    temp_m4b_path.rename(final_m4b_path)
+    
+    try:
+        convert_to_m4b(combined_wav_path, temp_m4b_path)
+        # Simple M4B without metadata for quick operation
+        temp_m4b_path.rename(final_m4b_path)
+    except FileNotFoundError:
+        print(f"{RED}❌ FFmpeg not available - cannot create M4B audiobook{RESET}")
+        print(f"{YELLOW}📁 WAV file is available at: {combined_wav_path}{RESET}")
+        return None
 
     print(f"✅ Quick combine complete: {final_m4b_path}")
     return final_m4b_path
 
-def apply_playback_speed_to_m4b(input_m4b_path, output_m4b_path, speed_factor):
-    """Apply playback speed adjustment to M4B file using ffmpeg"""
-    try:
-        print(f"🔄 Applying {speed_factor}x speed to {Path(input_m4b_path).name}")
-        
-        # Check if ffmpeg is available
-        if not shutil.which('ffmpeg'):
-            print("❌ ffmpeg not found - required for M4B speed adjustment")
-            return False
-        
-        # Build ffmpeg command for speed adjustment
-        cmd = [
-            'ffmpeg', '-y',  # -y to overwrite output file
-            '-i', str(input_m4b_path),
-            '-filter:a', f'atempo={speed_factor}',  # Audio speed adjustment
-            '-c:a', 'aac',  # Re-encode to AAC for M4B compatibility
-            '-b:a', '64k',  # Audio bitrate
-            str(output_m4b_path)
-        ]
-        
-        print(f"Running: {' '.join(cmd)}")
-        
-        # Execute ffmpeg command
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True,
-            timeout=300  # 5 minute timeout
-        )
-        
-        if result.returncode == 0:
-            print(f"✅ Successfully created speed-adjusted M4B: {Path(output_m4b_path).name}")
-            return True
-        else:
-            print(f"❌ ffmpeg failed: {result.stderr}")
-            return False
-            
-    except subprocess.TimeoutExpired:
-        print("❌ M4B speed adjustment timed out")
-        return False
-    except Exception as e:
-        print(f"❌ Error adjusting M4B speed: {e}")
-        return False
+# apply_playback_speed_to_m4b function removed - now uses unified convert_to_m4b from modules.file_manager
 
 if __name__ == "__main__":
     import sys

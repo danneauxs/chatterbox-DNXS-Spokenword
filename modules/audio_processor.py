@@ -1,6 +1,42 @@
 """
-Audio Processing Module
-Handles audio validation, effects, cleanup, and quality control
+ChatterboxTTS Audio Processing & Quality Control Module
+======================================================
+
+OVERVIEW:
+This module provides comprehensive audio quality validation, enhancement, and
+post-processing for TTS-generated audio. It ensures consistent quality across
+audiobook chapters by detecting and handling common TTS artifacts.
+
+MAIN COMPONENTS:
+1. QUALITY VALIDATION: Detects clipping, silence, flatness, and other artifacts
+2. HUM DETECTION: Identifies and flags TTS-generated audio hum using frequency analysis
+3. AUDIO ENHANCEMENT: Normalization, trimming, and quality improvements
+4. ASR VALIDATION: Optional speech recognition for quality verification
+5. SILENCE INSERTION: Adds appropriate pauses based on punctuation boundaries
+6. AUDIO HEALTH CHECKS: Comprehensive audio file validation
+
+CRITICAL QUALITY FEATURES:
+- TTS hum detection with configurable frequency thresholds
+- Audio clipping detection and prevention
+- Silence detection at beginning/end of chunks
+- Flatness detection (monotone audio identification)
+- ASR-based transcription accuracy validation
+- Dynamic range and loudness assessment
+
+WORKFLOW:
+Raw TTS Audio → Quality Validation → Artifact Detection → 
+Enhancement Processing → Silence Insertion → Final Audio Output
+
+TECHNICAL DETAILS:
+- Supports multiple audio formats (WAV, MP3, FLAC)
+- Configurable quality thresholds for different validation types
+- Integration with Whisper ASR for transcription validation
+- Memory-efficient processing for large audio files
+- Detailed logging for quality control debugging
+
+PERFORMANCE IMPACT:
+Essential for maintaining consistent audiobook quality and preventing
+distribution of low-quality audio with TTS artifacts or technical issues.
 """
 
 import numpy as np

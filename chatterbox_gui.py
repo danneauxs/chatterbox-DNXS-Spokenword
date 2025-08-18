@@ -420,6 +420,9 @@ class ChatterboxMainWindow(QMainWindow):
 
         # Status bar
         self.statusBar().showMessage("Ready")
+        
+        # Test audio system on startup (Windows compatibility)
+        self.test_audio_system_startup()
     
     def closeEvent(self, event):
         """Handle GUI close event - cleanup audio playback"""
@@ -429,6 +432,24 @@ class ChatterboxMainWindow(QMainWindow):
         
         # Accept the close event
         event.accept()
+    
+    def test_audio_system_startup(self):
+        """Test audio system on startup and show status"""
+        try:
+            import pygame
+            pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+            pygame.mixer.quit()
+            # Audio system working - no message needed
+        except ImportError:
+            # pygame not available
+            self.statusBar().showMessage("Ready - Voice preview unavailable (missing audio components)")
+        except Exception as e:
+            # pygame failed - show in status bar
+            import platform
+            if platform.system() == "Windows":
+                self.statusBar().showMessage("Ready - Voice preview may not work (check audio drivers)")
+            else:
+                self.statusBar().showMessage("Ready - Voice preview unavailable")
 
     def create_convert_book_tab(self):
         """Tab 1: Convert a book (GenTTS) - Main functionality"""
@@ -818,6 +839,19 @@ class ChatterboxMainWindow(QMainWindow):
         button_layout.addSpacing(40)
         
         # M4B Playback Speed Control
+        # M4B Sample Rate (left of speed spinner)
+        sample_rate_label = QLabel("M4B Sample Rate:")
+        button_layout.addWidget(sample_rate_label)
+        
+        self.main_m4b_sample_rate_combo = QComboBox()
+        self.main_m4b_sample_rate_combo.addItems(["22050", "24000", "44100", "48000", "96000"])
+        self.main_m4b_sample_rate_combo.setCurrentText(str(M4B_SAMPLE_RATE))
+        self.main_m4b_sample_rate_combo.setMaximumWidth(80)
+        self.main_m4b_sample_rate_combo.setToolTip("Output is 24KHz. This matches input samples. Use the drop down to change output. Note: increasing output only really increases size not quality.")
+        button_layout.addWidget(self.main_m4b_sample_rate_combo)
+        
+        button_layout.addWidget(QLabel("Hz"))
+        
         speed_label = QLabel("M4B Speed:")
         button_layout.addWidget(speed_label)
         
@@ -830,23 +864,34 @@ class ChatterboxMainWindow(QMainWindow):
         self.main_playback_speed_spin.setToolTip("Playback speed multiplier for M4B output (<1 slower, >1 faster)")
         button_layout.addWidget(self.main_playback_speed_spin)
         
-        # Regenerate M4B button
-        self.regenerate_m4b_btn = QPushButton("🔄 Regenerate M4B")
+        # Regenerate button
+        self.regenerate_m4b_btn = QPushButton("REGENERATE")
         self.regenerate_m4b_btn.setStyleSheet("QPushButton { background-color: #2196F3; color: white; font-weight: bold; padding: 8px; }")
         self.regenerate_m4b_btn.clicked.connect(self.regenerate_m4b)
-        self.regenerate_m4b_btn.setToolTip("Regenerate M4B file with new speed setting")
+        self.regenerate_m4b_btn.setToolTip("Regenerate selected audio file with new speed setting")
+        self.regenerate_m4b_btn.setEnabled(False)  # Disabled until file selected
         button_layout.addWidget(self.regenerate_m4b_btn)
         
+        # Browse button (standard style like other browse buttons on Tab 1)
+        self.browse_m4b_btn = QPushButton("Browse")
+        self.browse_m4b_btn.clicked.connect(self.browse_m4b_file)
+        self.browse_m4b_btn.setToolTip("Select WAV or M4B file to regenerate or play")
+        button_layout.addWidget(self.browse_m4b_btn)
+        
         # Audio Controls (replaces green ETA display)
-        self.play_btn = QPushButton("▶️ Play M4B")
+        self.play_btn = QPushButton("PLAY")
         self.play_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 8px; }")
         self.play_btn.setEnabled(False)
         self.play_btn.clicked.connect(self.play_m4b_file)
-        self.play_btn.setToolTip("Open the generated M4B audiobook in system player")
+        self.play_btn.setToolTip("Click Play after conversion to hear m4b. Browse and select a wav file. Click play to preview the file. Click regenerate to change the playback speed. Then click Play to hear the new file.")
         button_layout.addWidget(self.play_btn)
         
-        # Track current M4B file
-        self.current_m4b_file = None
+        # Track audio files for priority system
+        self.selected_wav_file = None      # WAV file selected via browse button
+        self.selected_m4b_file = None      # M4B file selected via browse button
+        self.regenerated_m4b_file = None   # File created by regeneration
+        self.converted_m4b_file = None     # File created by conversion
+        self.current_m4b_file = None       # Legacy - most recent file for play button
         
 # Redundant status display removed - information now in TTS generation status
         
@@ -967,6 +1012,19 @@ class ChatterboxMainWindow(QMainWindow):
         lufs_layout.addWidget(self.target_lufs_spin)
         lufs_layout.addStretch()
         detection_layout.addRow(lufs_layout)
+        
+        # M4B Sample Rate setting
+        self.m4b_sample_rate_combo = QComboBox()
+        self.m4b_sample_rate_combo.addItems(["22050", "24000", "44100", "48000", "96000"])
+        self.m4b_sample_rate_combo.setCurrentText(str(M4B_SAMPLE_RATE))
+        self.m4b_sample_rate_combo.setMaximumWidth(80)
+        
+        m4b_layout = QHBoxLayout()
+        m4b_layout.addWidget(QLabel("M4B Sample Rate:"))
+        m4b_layout.addWidget(self.m4b_sample_rate_combo)
+        m4b_layout.addWidget(QLabel("Hz"))
+        m4b_layout.addStretch()
+        detection_layout.addRow(m4b_layout)
 
         self.audio_trimming_check = QCheckBox("Automatic audio trimming")
         self.audio_trimming_check.setChecked(ENABLE_AUDIO_TRIMMING)
@@ -1932,33 +1990,62 @@ class ChatterboxMainWindow(QMainWindow):
             self._voice_timer.start(200)  # Check every 200ms
             
         except ImportError:
-            # Fallback to system audio commands
-            import subprocess
-            import platform
+            # pygame not available - show helpful message and try system fallback
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Audio Preview Unavailable")
+            msg.setText("Voice preview is not available due to missing audio components.")
+            msg.setInformativeText("This doesn't affect TTS generation - only GUI audio preview.\n\n"
+                                 "To fix: Update audio drivers or restart your computer.")
+            msg.exec_()
+            return
             
-            try:
-                system = platform.system()
-                if system == "Linux":
-                    # Use paplay for better control
-                    subprocess.Popen(['paplay', voice_path])
-                elif system == "Darwin":  # macOS
-                    subprocess.Popen(['afplay', voice_path])
-                elif system == "Windows":
-                    subprocess.Popen(['powershell', '-c', f'(New-Object Media.SoundPlayer "{voice_path}").PlaySync()'])
-                
-                # Update button states for fallback
-                self.voice_play_btn.setEnabled(False)
-                self.voice_stop_btn.setEnabled(False)  # Can't stop system commands easily
-                self._voice_playing = True
-                
-                # Auto-reset after estimated duration (fallback)
-                QTimer.singleShot(5000, self._reset_voice_buttons)  # Reset after 5 seconds
-                
-            except Exception as e:
-                QMessageBox.warning(self, "Audio Error", f"Could not play audio: {e}")
-                
         except Exception as e:
-            QMessageBox.warning(self, "Audio Error", f"Could not play audio: {e}")
+            # pygame failed - try Windows fallback methods
+            import platform
+            if platform.system() == "Windows":
+                try:
+                    # Try winsound first (most reliable on Windows)
+                    import winsound
+                    winsound.PlaySound(voice_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    
+                    # Update button states
+                    self.voice_play_btn.setEnabled(False)
+                    self.voice_stop_btn.setEnabled(False)  # winsound can't be stopped easily
+                    self._voice_playing = True
+                    
+                    # Auto-reset after estimated duration
+                    QTimer.singleShot(5000, self._reset_voice_buttons)
+                    return
+                    
+                except ImportError:
+                    # Try PowerShell as last resort
+                    try:
+                        import subprocess
+                        subprocess.Popen(['powershell', '-c', f'(New-Object Media.SoundPlayer "{voice_path}").PlaySync()'], 
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
+                        
+                        self.voice_play_btn.setEnabled(False)
+                        self.voice_stop_btn.setEnabled(False)
+                        self._voice_playing = True
+                        QTimer.singleShot(5000, self._reset_voice_buttons)
+                        return
+                        
+                    except Exception:
+                        pass
+            
+            # All methods failed - show user-friendly error
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Audio Preview Error")
+            msg.setText("Unable to play voice sample.")
+            msg.setInformativeText(f"Technical details: {str(e)}\n\n"
+                                 "This doesn't affect TTS generation - only GUI preview.\n\n"
+                                 "Common fixes:\n"
+                                 "• Update audio drivers\n"
+                                 "• Check Windows audio settings\n" 
+                                 "• Restart your computer")
+            msg.exec_()
     
     def stop_voice_sample(self):
         """Stop voice sample playback"""
@@ -1967,9 +2054,16 @@ class ChatterboxMainWindow(QMainWindow):
             if pygame.mixer.get_init():
                 pygame.mixer.music.stop()
         except ImportError:
-            # For fallback system commands, we can't easily stop them
-            # They will continue playing until finished
-            pass
+            # Try to stop Windows audio if possible
+            import platform
+            if platform.system() == "Windows":
+                try:
+                    import winsound
+                    winsound.PlaySound(None, winsound.SND_PURGE)  # Stop all winsound playback
+                except ImportError:
+                    # For PowerShell and other system commands, we can't easily stop them
+                    # They will continue playing until finished
+                    pass
         except Exception as e:
             print(f"Error stopping voice sample: {e}")
         
@@ -2221,6 +2315,7 @@ class ChatterboxMainWindow(QMainWindow):
             'normalization_type': self.normalization_type_combo.currentText(),
             'target_lufs': self.target_lufs_spin.value(),
             'target_peak_db': self.target_peak_db_spin.value(),
+            'm4b_sample_rate': int(self.m4b_sample_rate_combo.currentText()),
             'enable_audio_trimming': self.audio_trimming_check.isChecked(),
             'speech_threshold': self.speech_threshold_spin.value(),
             'trimming_buffer': self.trimming_buffer_spin.value(),
@@ -3029,89 +3124,153 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         # TODO: Integrate with JSON generation functionality
         QMessageBox.information(self, "Started", "JSON generation started - check output log")
 
-    def regenerate_m4b(self):
-        """Regenerate M4B file with new speed setting"""
-        try:
-            # Get current speed setting from GUI
-            new_speed = self.main_playback_speed_spin.value()
+    def browse_m4b_file(self):
+        """Browse and select a WAV or M4B file for regeneration or playback"""
+        # Set default directory to Audiobook folder
+        default_dir = str(Path("Audiobook").resolve()) if Path("Audiobook").exists() else str(Path.cwd())
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Audio File",
+            default_dir,
+            "Audio Files (*.wav *.m4b);;WAV Files (*.wav);;M4B Files (*.m4b);;All Files (*)"
+        )
+        
+        if file_path:
+            selected_file = Path(file_path)
+            file_extension = selected_file.suffix.lower()
             
-            # Find the most recent combined WAV file
-            audiobook_root = Path("Audiobook")
-            if not audiobook_root.exists():
-                QMessageBox.warning(self, "Error", "No Audiobook directory found")
-                return
+            if file_extension == '.wav':
+                # TRIGGER: Browse WAV - Clear all higher priority results
+                self.converted_m4b_file = None    # Clear conversion results
+                self.regenerated_m4b_file = None  # Clear regeneration results
+                self.selected_m4b_file = None     # Clear M4B selection
+                
+                # Store WAV file for regeneration
+                self.selected_wav_file = selected_file
+                self.log_output(f"📁 Selected WAV file: {selected_file.name}")
+                
+                # Enable regenerate button for WAV file
+                self.regenerate_m4b_btn.setEnabled(True)
+                self.regenerate_m4b_btn.setToolTip(f"Create M4B from: {selected_file.name}")
+                
+                # Enable play button for immediate WAV playback
+                self.play_btn.setEnabled(True)
+                self.play_btn.setToolTip(f"Play selected WAV file: {selected_file.name}")
+                
+            elif file_extension == '.m4b':
+                # TRIGGER: Browse M4B - Clear all higher priority results
+                self.converted_m4b_file = None    # Clear conversion results
+                self.regenerated_m4b_file = None  # Clear regeneration results
+                self.selected_wav_file = None     # Clear WAV selection
+                
+                # Store M4B file for regeneration/playback
+                self.selected_m4b_file = selected_file
+                self.log_output(f"📁 Selected M4B file: {selected_file.name}")
+                
+                # Enable regenerate button for M4B file
+                self.regenerate_m4b_btn.setEnabled(True)
+                self.regenerate_m4b_btn.setToolTip(f"Regenerate: {selected_file.name}")
+                
+                # Enable play button for immediate playback
+                self.play_btn.setEnabled(True)
+                self.play_btn.setToolTip(f"Play selected file: {selected_file.name}")
+                
+                # Update current file for priority system
+                self.current_m4b_file = selected_file
             
-            # Look for WAV files (the program renames from combined.wav to final name)
-            # Filter out individual chunk files and only get main book WAV files
-            wav_files = []
-            for wav_file in audiobook_root.rglob("*.wav"):
-                # Skip individual chunk files in TTS/audio_chunks/
-                if "TTS" not in str(wav_file) and "chunk_" not in wav_file.name:
-                    wav_files.append(wav_file)
-            
-            if not wav_files:
-                QMessageBox.warning(self, "Error", "No main WAV file found in Audiobook directory")
-                return
-            
-            # If multiple WAV files, let user choose
-            if len(wav_files) > 1:
-                from PyQt5.QtWidgets import QInputDialog
-                
-                # Create list of file options with timestamps
-                file_options = []
-                for wav_file in sorted(wav_files, key=lambda p: p.stat().st_mtime, reverse=True):
-                    timestamp = Path(wav_file).stat().st_mtime
-                    import time
-                    time_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(timestamp))
-                    file_options.append(f"{wav_file.name} ({time_str})")
-                
-                choice, ok = QInputDialog.getItem(
-                    self, 
-                    "Select WAV File", 
-                    f"Found {len(wav_files)} WAV files. Select which one to regenerate M4B from:",
-                    file_options,
-                    0,  # Default to most recent
-                    False
-                )
-                
-                if not ok:
-                    return  # User cancelled
-                
-                # Find the selected file
-                selected_index = file_options.index(choice)
-                latest_wav = sorted(wav_files, key=lambda p: p.stat().st_mtime, reverse=True)[selected_index]
             else:
-                # Only one file, use it
-                latest_wav = wav_files[0]
-            book_dir = latest_wav.parent
+                QMessageBox.warning(self, "Unsupported File", 
+                                  f"Unsupported file type: {file_extension}\n\n"
+                                  "Please select a WAV or M4B file.")
+    
+    def regenerate_m4b(self):
+        """Regenerate M4B file with new speed setting from WAV or M4B file"""
+        try:
+            # Check if user has selected a file via browse button
+            has_wav = hasattr(self, 'selected_wav_file') and self.selected_wav_file
+            has_m4b = hasattr(self, 'selected_m4b_file') and self.selected_m4b_file
             
-            self.log_output(f"🔄 Regenerating M4B with speed {new_speed}x from: {latest_wav.name}")
+            if not has_wav and not has_m4b:
+                QMessageBox.warning(self, "No File Selected", 
+                                  "Please use the Browse button to select a WAV or M4B file to regenerate.")
+                return
+            
+            # Handle WAV file selection (direct path)
+            if has_wav:
+                if not self.selected_wav_file.exists():
+                    QMessageBox.warning(self, "File Not Found", 
+                                      f"Selected WAV file no longer exists:\n{self.selected_wav_file}")
+                    return
+                
+                # Use WAV file directly
+                source_wav = self.selected_wav_file
+                book_dir = source_wav.parent
+                self.log_output(f"🔄 Creating M4B from WAV: {source_wav.name}")
+                
+            # Handle M4B file selection (find corresponding WAV)
+            elif has_m4b:
+                if not self.selected_m4b_file.exists():
+                    QMessageBox.warning(self, "File Not Found", 
+                                      f"Selected M4B file no longer exists:\n{self.selected_m4b_file}")
+                    return
+                
+                # Find corresponding WAV file (existing logic)
+                book_dir = self.selected_m4b_file.parent
+                m4b_base_name = self.selected_m4b_file.stem
+                
+                # Look for matching WAV file
+                wav_files = []
+                for wav_file in book_dir.glob("*.wav"):
+                    if "TTS" not in str(wav_file) and "chunk_" not in wav_file.name:
+                        wav_files.append(wav_file)
+                
+                if not wav_files:
+                    QMessageBox.warning(self, "Error", 
+                                      f"No WAV file found in the same directory as the selected M4B file:\n{book_dir}")
+                    return
+                
+                # Try to find matching WAV file
+                source_wav = None
+                for wav_file in wav_files:
+                    wav_base = wav_file.stem
+                    m4b_clean = m4b_base_name.split('[')[0].strip()
+                    wav_clean = wav_base.split('[')[0].strip()
+                    if m4b_clean == wav_clean:
+                        source_wav = wav_file
+                        break
+                
+                if not source_wav:
+                    source_wav = max(wav_files, key=lambda p: p.stat().st_mtime)
+                    QMessageBox.information(self, "File Match", 
+                                          f"Using most recent WAV file in directory:\n{source_wav.name}")
+                
+                self.log_output(f"🔄 Regenerating M4B from WAV: {source_wav.name}")
+            
+            # Get current speed and sample rate settings from GUI
+            new_speed = self.main_playback_speed_spin.value()
+            custom_sample_rate = int(self.main_m4b_sample_rate_combo.currentText())
             
             # Import the conversion function
             from modules.file_manager import convert_to_m4b
             
-            # Find existing M4B file to overwrite
-            existing_m4b = None
-            for m4b_file in book_dir.glob("*.m4b"):
-                if not m4b_file.name.startswith("temp_"):
-                    existing_m4b = m4b_file
-                    break
-            
-            if not existing_m4b:
-                # No existing M4B found, create new one
-                m4b_name = f"{book_dir.name}.m4b"
+            # Determine M4B output path based on input type
+            if has_wav:
+                # For WAV input: create new M4B with matching name
+                wav_base_name = source_wav.stem
+                m4b_name = f"{wav_base_name}.m4b"
                 final_m4b_path = book_dir / m4b_name
             else:
-                # Use existing M4B filename to overwrite
-                final_m4b_path = existing_m4b
-                m4b_name = existing_m4b.name
+                # For M4B input: use the selected M4B file as the target for regeneration
+                final_m4b_path = self.selected_m4b_file
+                m4b_name = self.selected_m4b_file.name
             
             # Create temp file for conversion (Option C implementation)
             temp_m4b_path = book_dir / f"temp_speed_conversion.m4b"
             
-            # Perform conversion with custom speed parameter
+            # Perform conversion with custom speed and sample rate parameters
             try:
-                convert_to_m4b(latest_wav, temp_m4b_path, custom_speed=new_speed)
+                convert_to_m4b(source_wav, temp_m4b_path, custom_speed=new_speed, custom_sample_rate=custom_sample_rate)
                 
                 # Check if the temp file was created successfully
                 if temp_m4b_path.exists() and temp_m4b_path.stat().st_size > 0:
@@ -3120,14 +3279,42 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
                         final_m4b_path.unlink()  # Remove original
                     temp_m4b_path.rename(final_m4b_path)  # Rename temp to final
                     
-                    self.log_output(f"✅ M4B regenerated successfully: {m4b_name}")
-                    QMessageBox.information(self, "Success", f"M4B file regenerated with {new_speed}x speed:\n{m4b_name}")
+                    # TRIGGER: Regenerate - Clear conversion results, set regenerated result
+                    self.converted_m4b_file = None    # Clear conversion results (regenerate takes priority)
+                    self.regenerated_m4b_file = final_m4b_path  # Set regenerated result
+                    
+                    # Enable play button now that M4B is created/updated
+                    self.play_btn.setEnabled(True)
+                    self.play_btn.setToolTip(f"Play regenerated M4B: {m4b_name}")
+                    
+                    # If this was a WAV file, update the selection to the new M4B
+                    if has_wav:
+                        self.selected_m4b_file = final_m4b_path
+                        self.selected_wav_file = None  # Clear WAV selection
+                        self.log_output(f"✅ M4B created successfully from WAV: {m4b_name}")
+                        QMessageBox.information(self, "Success", f"M4B file created with {new_speed}x speed:\n{m4b_name}")
+                    else:
+                        self.log_output(f"✅ M4B regenerated successfully: {m4b_name}")
+                        QMessageBox.information(self, "Success", f"M4B file regenerated with {new_speed}x speed:\n{m4b_name}")
                 else:
                     self.log_output(f"❌ M4B regeneration failed: Temp file not created or empty")
                     QMessageBox.critical(self, "Error", "M4B regeneration failed: Temp file not created or empty")
                     # Clean up failed temp file
                     if temp_m4b_path.exists():
                         temp_m4b_path.unlink()
+            except FileNotFoundError as ffmpeg_error:
+                # FFmpeg not available - show user-friendly message
+                self.log_output(f"❌ FFmpeg not available: {ffmpeg_error}")
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Critical)
+                msg.setWindowTitle("FFmpeg Required")
+                msg.setText("Cannot create M4B audiobook - FFmpeg is not installed.")
+                msg.setInformativeText("FFmpeg is required for M4B audiobook creation.\n\n"
+                                     "To install FFmpeg:\n"
+                                     "• Download from https://ffmpeg.org/download.html\n"
+                                     "• Or re-run the installation script\n\n"
+                                     "WAV audio files are still available in the Audiobook folder.")
+                msg.exec_()
             except Exception as conv_error:
                 self.log_output(f"❌ M4B conversion error: {conv_error}")
                 QMessageBox.critical(self, "Error", f"M4B conversion error:\n{conv_error}")
@@ -3161,11 +3348,21 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
             alt_generated_m4b = audiobook_dir / alt_m4b_name
             
             if generated_m4b.exists():
-                self.current_m4b_file = generated_m4b
+                # TRIGGER: Convert - Clear all other results, set converted result (highest priority)
+                self.regenerated_m4b_file = None   # Clear regeneration results
+                self.selected_m4b_file = None      # Clear browse selections
+                self.selected_wav_file = None      # Clear browse selections
+                self.converted_m4b_file = generated_m4b  # Set conversion result
+                self.current_m4b_file = generated_m4b  # Legacy support
                 self.play_btn.setEnabled(True)
                 self.log_output(f"🎵 Audio controls enabled for: {generated_m4b.name}")
             elif alt_generated_m4b.exists():
-                self.current_m4b_file = alt_generated_m4b
+                # TRIGGER: Convert - Clear all other results, set converted result (highest priority)
+                self.regenerated_m4b_file = None   # Clear regeneration results
+                self.selected_m4b_file = None      # Clear browse selections
+                self.selected_wav_file = None      # Clear browse selections
+                self.converted_m4b_file = alt_generated_m4b  # Set conversion result
+                self.current_m4b_file = alt_generated_m4b  # Legacy support
                 self.play_btn.setEnabled(True)
                 self.log_output(f"🎵 Audio controls enabled for: {alt_generated_m4b.name}")
             else:
@@ -3195,6 +3392,8 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         self.normalization_type_combo.setCurrentText(NORMALIZATION_TYPE)
         self.target_lufs_spin.setValue(TARGET_LUFS)
         self.target_peak_db_spin.setValue(TARGET_PEAK_DB)
+        self.m4b_sample_rate_combo.setCurrentText(str(M4B_SAMPLE_RATE))
+        self.main_m4b_sample_rate_combo.setCurrentText(str(M4B_SAMPLE_RATE))
         self.audio_trimming_check.setChecked(ENABLE_AUDIO_TRIMMING)
         self.speech_threshold_spin.setValue(SPEECH_ENDPOINT_THRESHOLD)
         self.trimming_buffer_spin.setValue(TRIMMING_BUFFER_MS)
@@ -3279,6 +3478,11 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         config_checkboxes = [self.normalization_check, self.audio_trimming_check]
         for checkbox in config_checkboxes:
             checkbox.toggled.connect(self.mark_config_changed)
+            
+        # Connect combo boxes to change tracking
+        config_combos = [self.m4b_sample_rate_combo]
+        for combo in config_combos:
+            combo.currentTextChanged.connect(self.mark_config_changed)
     
     def mark_config_changed(self):
         """Mark config as having unsaved changes"""
@@ -3344,6 +3548,7 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
                 'NORMALIZATION_TYPE': f'"{self.normalization_type_combo.currentText()}"',
                 'TARGET_LUFS': self.target_lufs_spin.value(),
                 'TARGET_PEAK_DB': self.target_peak_db_spin.value(),
+                'M4B_SAMPLE_RATE': int(self.m4b_sample_rate_combo.currentText()),
                 'ENABLE_AUDIO_TRIMMING': self.audio_trimming_check.isChecked(),
                 'SPEECH_ENDPOINT_THRESHOLD': self.speech_threshold_spin.value(),
                 'TRIMMING_BUFFER_MS': self.trimming_buffer_spin.value(),
@@ -3426,41 +3631,154 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
 
 
     def play_m4b_file(self):
-        """Open the generated M4B file in system default player"""
-        self.log_output("🔍 Play M4B button clicked")
+        """Open audio file in system default player with priority system"""
+        self.log_output("🔍 Play button clicked")
         try:
-            if not self.current_m4b_file:
-                self.log_output("❌ No M4B file available to play")
+            # Priority system: conversion > regeneration > browse selection (WAV or M4B)
+            file_to_play = None
+            source_description = ""
+            
+            # 1. Highest priority: converted M4B file
+            if hasattr(self, 'converted_m4b_file') and self.converted_m4b_file and self.converted_m4b_file.exists():
+                file_to_play = self.converted_m4b_file
+                source_description = "converted M4B"
+            # 2. Medium priority: regenerated M4B file
+            elif hasattr(self, 'regenerated_m4b_file') and self.regenerated_m4b_file and self.regenerated_m4b_file.exists():
+                file_to_play = self.regenerated_m4b_file
+                source_description = "regenerated M4B"
+            # 3. Browse-selected files: M4B takes priority over WAV
+            elif hasattr(self, 'selected_m4b_file') and self.selected_m4b_file and self.selected_m4b_file.exists():
+                file_to_play = self.selected_m4b_file
+                source_description = "selected M4B"
+            # 4. Browse-selected WAV file
+            elif hasattr(self, 'selected_wav_file') and self.selected_wav_file and self.selected_wav_file.exists():
+                file_to_play = self.selected_wav_file
+                source_description = "selected WAV"
+            # 5. Fallback: legacy current_m4b_file
+            elif hasattr(self, 'current_m4b_file') and self.current_m4b_file and self.current_m4b_file.exists():
+                file_to_play = self.current_m4b_file
+                source_description = "current M4B"
+            
+            if not file_to_play:
+                self.log_output("❌ No audio file available to play")
+                QMessageBox.information(self, "No File", 
+                                      "No audio file available to play.\n\n"
+                                      "Use the Browse button to select a WAV or M4B file, "
+                                      "or convert/regenerate an M4B file first.")
                 return
-                
-            # Use system default player to open M4B file
+            
+            # Use system default player to open audio file
             import subprocess
             import sys
             
             if sys.platform == "win32":
-                subprocess.Popen(["start", str(self.current_m4b_file)], shell=True)
+                subprocess.Popen(["start", str(file_to_play)], shell=True)
             elif sys.platform == "darwin":
-                subprocess.Popen(["open", str(self.current_m4b_file)])
+                subprocess.Popen(["open", str(file_to_play)])
             else:  # Linux
-                subprocess.Popen(["xdg-open", str(self.current_m4b_file)])
+                subprocess.Popen(["xdg-open", str(file_to_play)])
             
-            self.log_output(f"🎵 Opened in system player: {self.current_m4b_file.name}")
+            self.log_output(f"🎵 Playing {source_description}: {file_to_play.name}")
                 
         except Exception as e:
-            self.log_output(f"❌ Error opening M4B file: {e}")
+            self.log_output(f"❌ Error opening audio file: {e}")
+            QMessageBox.critical(self, "Playback Error", f"Error opening audio file:\n{e}")
 
 
     def detect_and_update_device_status(self):
-        """Detect and update device status in the GUI"""
+        """Detect and update device status in the GUI using comprehensive CUDA checking"""
         try:
             import torch
-            if torch.cuda.is_available():
-                gpu_name = torch.cuda.get_device_name(0)
-                gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
-                device_text = f"🚀 GPU: {gpu_name} ({gpu_memory:.1f}GB)"
-                self.tab1_status_panel.device_label.setStyleSheet("color: #4CAF50; font-weight: bold;")  # Green
+            import subprocess
+            import sys
+            
+            # Use the same comprehensive CUDA checking logic as our launcher scripts
+            cuda_status = "UNKNOWN"
+            device_text = "❓ Checking device..."
+            
+            try:
+                # Check if PyTorch has CUDA support
+                if not hasattr(torch.version, 'cuda') or torch.version.cuda is None:
+                    cuda_status = "CPU_ONLY"
+                else:
+                    pytorch_cuda = torch.version.cuda
+                    
+                    # Try to detect system CUDA
+                    try:
+                        nvcc_result = subprocess.run(['nvcc', '--version'], 
+                                                   capture_output=True, text=True, timeout=5)
+                        if nvcc_result.returncode == 0:
+                            import re
+                            match = re.search(r'release (\d+\.\d+)', nvcc_result.stdout)
+                            if match:
+                                system_cuda = match.group(1)
+                                
+                                # CUDA compatibility check with special handling for CUDA 12.0
+                                pytorch_version = float(pytorch_cuda)
+                                system_version = float(system_cuda)
+                                
+                                # CUDA compatibility check - be more permissive
+                                compatible = False
+                                
+                                # CUDA 12.x family compatibility (12.0, 12.1, 12.2, etc.)
+                                if (system_version >= 12.0 and pytorch_version >= 12.0 and 
+                                    int(system_version) == 12 and int(pytorch_version) == 12):
+                                    compatible = True
+                                # CUDA 11.x family compatibility  
+                                elif (system_version >= 11.0 and pytorch_version >= 11.0 and 
+                                      int(system_version) == 11 and int(pytorch_version) == 11):
+                                    compatible = True
+                                # General rule: PyTorch CUDA should be <= System CUDA + tolerance
+                                elif pytorch_version <= system_version + 0.5:
+                                    compatible = True
+                                
+                                if compatible:
+                                    # Additional check: can we actually use CUDA?
+                                    if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+                                        cuda_status = "COMPATIBLE"
+                                    else:
+                                        cuda_status = "NO_DEVICES"
+                                else:
+                                    cuda_status = f"MISMATCH:{pytorch_cuda}:{system_cuda}"
+                            else:
+                                cuda_status = "UNKNOWN"
+                        else:
+                            cuda_status = "NO_NVCC"
+                    except (subprocess.TimeoutExpired, FileNotFoundError):
+                        cuda_status = "NO_NVCC"
+                        
+            except Exception as e:
+                cuda_status = f"ERROR:{str(e)}"
+            
+            # DETECTION REPORT ONLY - Don't override GPU usage, just report status
+            if cuda_status == "COMPATIBLE":
+                try:
+                    gpu_name = torch.cuda.get_device_name(0)
+                    gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+                    device_text = f"🚀 GPU: {gpu_name} ({gpu_memory:.1f}GB) [DETECTION: Compatible]"
+                    self.tab1_status_panel.device_label.setStyleSheet("color: #4CAF50; font-weight: bold;")  # Green
+                except:
+                    device_text = "🚀 GPU: CUDA Available [DETECTION: Compatible]"
+                    self.tab1_status_panel.device_label.setStyleSheet("color: #4CAF50; font-weight: bold;")  # Green
+            elif cuda_status == "CPU_ONLY":
+                device_text = "🚀 GPU: Forcing GPU Usage [DETECTION: PyTorch CPU-only]"
+                self.tab1_status_panel.device_label.setStyleSheet("color: #FF9800; font-weight: bold;")  # Orange
+            elif cuda_status == "NO_NVCC":
+                device_text = "🚀 GPU: Forcing GPU Usage [DETECTION: No CUDA toolkit]"
+                self.tab1_status_panel.device_label.setStyleSheet("color: #FF9800; font-weight: bold;")  # Orange
+            elif cuda_status == "NO_DEVICES":
+                device_text = "🚀 GPU: Forcing GPU Usage [DETECTION: No CUDA devices]"
+                self.tab1_status_panel.device_label.setStyleSheet("color: #FF9800; font-weight: bold;")  # Orange
+            elif cuda_status.startswith("MISMATCH"):
+                parts = cuda_status.split(":")
+                if len(parts) == 3:
+                    pytorch_cuda, system_cuda = parts[1], parts[2]
+                    device_text = f"🚀 GPU: Forcing GPU Usage [DETECTION: Mismatch {pytorch_cuda}/{system_cuda}]"
+                else:
+                    device_text = "🚀 GPU: Forcing GPU Usage [DETECTION: Version mismatch]"
+                self.tab1_status_panel.device_label.setStyleSheet("color: #FF9800; font-weight: bold;")  # Orange
             else:
-                device_text = "💻 CPU (GPU not available)"
+                device_text = f"🚀 GPU: Forcing GPU Usage [DETECTION: {cuda_status}]"
                 self.tab1_status_panel.device_label.setStyleSheet("color: #FF9800; font-weight: bold;")  # Orange
             
             self.tab1_status_panel.device_label.setText(device_text)
@@ -3484,7 +3802,9 @@ Audio: chunk_{chunk['index']+1:05d}.wav"""
         # Safety check in case output_text hasn't been initialized yet
         if hasattr(self, 'output_text') and self.output_text is not None:
             self.output_text.append(f"[{timestamp}] {clean_message}")
-            self.output_text.ensureCursorVisible()
+            # Force scroll to bottom
+            scrollbar = self.output_text.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
         else:
             # Fallback to print if GUI not ready
             print(f"[{timestamp}] {clean_message}")

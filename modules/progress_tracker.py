@@ -1,6 +1,37 @@
 """
-Progress Tracker Module
-Handles progress display, VRAM monitoring, logging systems, and performance tracking
+ChatterboxTTS Progress Tracking & Performance Monitoring Module
+==============================================================
+
+OVERVIEW:
+This module provides comprehensive progress tracking, performance monitoring, and logging
+for ChatterboxTTS audiobook generation. It handles real-time ETA calculations, VRAM usage
+monitoring, and detailed logging for debugging and optimization.
+
+MAIN COMPONENTS:
+1. LOGGING SYSTEM: File + console logging with color-coded output
+2. PROGRESS TRACKING: Real-time progress display with ETA calculations  
+3. PERFORMANCE MONITORING: GPU memory usage, processing times, realtime factors
+4. BATCH PROGRESS: Multi-chapter audiobook progress aggregation
+5. SYSTEM MONITORING: VRAM safety thresholds and memory optimization
+
+KEY FEATURES:
+- Real-time ETA updates during TTS processing
+- VRAM usage monitoring with automatic cleanup
+- Performance metrics (realtime factor, chunks/minute)
+- Color-coded console output for different message types
+- Detailed logging for troubleshooting and optimization
+- Memory-safe processing with configurable thresholds
+
+PERFORMANCE ENHANCEMENTS:
+- Added producer-consumer pipeline progress tracking
+- Enhanced ETA calculations for more accurate estimates
+- GPU memory monitoring prevents VRAM exhaustion
+- Automatic memory cleanup and garbage collection
+- Processing speed metrics for performance optimization
+
+USAGE:
+Called by TTS engine during audiobook generation to provide user feedback
+and monitor system resource usage for safe, efficient processing.
 """
 
 import time
@@ -203,13 +234,42 @@ def display_system_info():
 # ============================================================================
 
 class PerformanceTracker:
-    """Track performance metrics throughout processing"""
+    """
+    PERFORMANCE TRACKING CLASS - Core metrics collection and analysis
+    ===============================================================
+    
+    PURPOSE:
+    This class provides comprehensive performance monitoring for TTS processing,
+    tracking timing, memory usage, and generating detailed performance reports
+    for optimization and debugging.
+    
+    TRACKED METRICS:
+    - Individual chunk processing times
+    - VRAM usage per chunk (allocated vs reserved memory)
+    - Batch processing times for multi-chapter books
+    - Overall processing statistics and trends
+    - Real-time factor calculations (audio time vs processing time)
+    
+    USAGE FLOW:
+    1. Initialize at start of TTS session
+    2. Log chunk completions during processing  
+    3. Track batch completions for multi-part books
+    4. Generate final performance report
+    
+    BENEFITS:
+    - Identifies processing bottlenecks
+    - Monitors memory usage patterns
+    - Provides user feedback on progress
+    - Enables performance optimization
+    - Helps debug processing issues
+    """
 
     def __init__(self):
-        self.start_time = time.time()
-        self.chunk_times = []
-        self.vram_usage = []
-        self.batch_times = []
+        """Initialize performance tracking with baseline metrics"""
+        self.start_time = time.time()  # Session start timestamp
+        self.chunk_times = []          # Individual chunk processing times  
+        self.vram_usage = []          # VRAM usage snapshots (chunk_id, allocated, reserved)
+        self.batch_times = []         # Batch processing times for multi-chapter books
 
     def log_chunk_completion(self, chunk_index, audio_duration):
         """Log individual chunk completion"""

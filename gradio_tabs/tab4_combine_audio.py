@@ -22,6 +22,16 @@ try:
 except ImportError as e:
     print(f"⚠️  Combine functionality not available: {e}")
     COMBINE_AVAILABLE = False
+    
+    # Define fallback functions if imports fail
+    def combine_audio_for_book(*args, **kwargs):
+        raise ImportError("Backend combine functionality not available")
+    
+    def get_audio_files_in_directory(*args, **kwargs):
+        raise ImportError("Backend file manager functionality not available")
+    
+    def get_wav_duration(*args, **kwargs):
+        raise ImportError("Backend audio processor functionality not available")
 
 # Global state for combine operations
 combine_state = {

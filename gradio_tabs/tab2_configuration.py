@@ -11,15 +11,13 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Tuple, List
 
-# Import configuration
+# Import ChatterboxTTS configuration
 try:
     from config.config import *
     CONFIG_AVAILABLE = True
-    print("✅ Config module loaded successfully")
-except ImportError as e:
-    print(f"⚠️  Config not available: {e}")
+except ImportError:
+    print("⚠️  Config not available - using defaults")
     CONFIG_AVAILABLE = False
-    # Default values if config not available
     MAX_WORKERS = 2
     BATCH_SIZE = 100
     MIN_CHUNK_WORDS = 5
@@ -391,11 +389,19 @@ def create_configuration_tab():
                 'CHUNK_END_SILENCE_MS': int(values[30]) if values[29] else 0
             }
             
-            # Import the config module and update values
-            from config import config
-            for key, value in config_values.items():
-                if hasattr(config, key):
-                    setattr(config, key, value)
+            # Import the config module and update values using safe import
+            try:
+                from .gradio_imports import safe_import
+                config_module = safe_import('config', 'config')
+                for key, value in config_values.items():
+                    if hasattr(config_module, key):
+                        setattr(config_module, key, value)
+            except ImportError:
+                # Fallback to direct import
+                from config import config
+                for key, value in config_values.items():
+                    if hasattr(config, key):
+                        setattr(config, key, value)
             
             return "✅ Configuration saved successfully!\n🔄 Settings updated in memory. Restart application to persist changes."
             
@@ -450,44 +456,51 @@ def create_configuration_tab():
             if not CONFIG_AVAILABLE:
                 return "❌ Configuration module not available"
             
-            # Reload config module
+            # Reload config module using safe import
             import importlib
-            from config import config
-            importlib.reload(config)
+            try:
+                from .gradio_imports import safe_import
+                config_module = safe_import('config', 'config')
+                importlib.reload(config_module)
+            except ImportError:
+                # Fallback to direct import
+                from config import config
+                config_module = config
+                importlib.reload(config)
             
             # Return reloaded values
             return (
-                config.MAX_WORKERS,
-                config.BATCH_SIZE,
-                config.MIN_CHUNK_WORDS,
-                config.MAX_CHUNK_WORDS,
-                config.ENABLE_NORMALIZATION,
-                config.TARGET_LUFS,
-                config.ENABLE_AUDIO_TRIMMING,
-                config.SPEECH_ENDPOINT_THRESHOLD,
-                config.TRIMMING_BUFFER_MS,
-                config.TTS_PARAM_MIN_EXAGGERATION,
-                config.TTS_PARAM_MAX_EXAGGERATION,
-                config.TTS_PARAM_MIN_CFG_WEIGHT,
-                config.TTS_PARAM_MAX_CFG_WEIGHT,
-                config.TTS_PARAM_MIN_TEMPERATURE,
-                config.TTS_PARAM_MAX_TEMPERATURE,
-                config.DEFAULT_EXAGGERATION,
-                config.DEFAULT_CFG_WEIGHT,
-                config.DEFAULT_TEMPERATURE,
-                config.VADER_EXAGGERATION_SENSITIVITY,
-                config.VADER_CFG_WEIGHT_SENSITIVITY,
-                config.VADER_TEMPERATURE_SENSITIVITY,
-                config.SILENCE_CHAPTER_START,
-                config.SILENCE_CHAPTER_END,
-                config.SILENCE_SECTION_BREAK,
-                config.SILENCE_PARAGRAPH_END,
-                config.SILENCE_COMMA,
-                config.SILENCE_PERIOD,
-                config.SILENCE_QUESTION_MARK,
-                config.SILENCE_EXCLAMATION,
-                config.CHUNK_END_SILENCE_MS > 0,
-                config.CHUNK_END_SILENCE_MS,
+                config_module.MAX_WORKERS,
+                config_module.BATCH_SIZE,
+                config_module.MIN_CHUNK_WORDS,
+                config_module.MAX_CHUNK_WORDS,
+                config_module.ENABLE_NORMALIZATION,
+                config_module.TARGET_LUFS,
+                config_module.ENABLE_AUDIO_TRIMMING,
+                config_module.SPEECH_ENDPOINT_THRESHOLD,
+                config_module.TRIMMING_BUFFER_MS,
+                config_module.TTS_PARAM_MIN_EXAGGERATION,
+                config_module.TTS_PARAM_MAX_EXAGGERATION,
+                config_module.TTS_PARAM_MIN_CFG_WEIGHT,
+                config_module.TTS_PARAM_MAX_CFG_WEIGHT,
+                config_module.TTS_PARAM_MIN_TEMPERATURE,
+                config_module.TTS_PARAM_MAX_TEMPERATURE,
+                config_module.DEFAULT_EXAGGERATION,
+                config_module.DEFAULT_CFG_WEIGHT,
+                config_module.DEFAULT_TEMPERATURE,
+                config_module.VADER_EXAGGERATION_SENSITIVITY,
+                config_module.VADER_CFG_WEIGHT_SENSITIVITY,
+                config_module.VADER_TEMPERATURE_SENSITIVITY,
+                config_module.SILENCE_CHAPTER_START,
+                config_module.SILENCE_CHAPTER_END,
+                config_module.SILENCE_SECTION_BREAK,
+                config_module.SILENCE_PARAGRAPH_END,
+                config_module.SILENCE_COMMA,
+                config_module.SILENCE_PERIOD,
+                config_module.SILENCE_QUESTION_MARK,
+                config_module.SILENCE_EXCLAMATION,
+                config_module.CHUNK_END_SILENCE_MS > 0,
+                config_module.CHUNK_END_SILENCE_MS,
                 "✅ Configuration reloaded from file"
             )
             

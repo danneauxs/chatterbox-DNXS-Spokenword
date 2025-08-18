@@ -145,8 +145,9 @@ def synthesize_chunk(chunk, index, book_name, audio_dir, revision=False, chunks_
         # Get TTS parameters for this chunk
         tts_params = get_tts_params_for_chunk(chunk)
         
-        # Prepare model with voice
-        model.prepare_conditionals(compatible_voice)
+        # Pre-warm model to eliminate first chunk quality variations
+        from modules.tts_engine import prewarm_model_with_voice
+        model = prewarm_model_with_voice(model, compatible_voice, tts_params)
         
         # Get chunk text
         chunk_text = chunk.get('text', '')

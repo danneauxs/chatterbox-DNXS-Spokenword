@@ -1,6 +1,50 @@
 """
-File Manager Module
-Handles I/O operations, M4B conversion, metadata, and FFmpeg operations
+ChatterboxTTS File Management & Media Processing Module
+======================================================
+
+OVERVIEW:
+This module handles all file system operations, media format conversions, and
+metadata management for ChatterboxTTS. It manages the complex directory structure
+for audiobook production and handles conversion to final distribution formats.
+
+MAIN COMPONENTS:
+1. DIRECTORY MANAGEMENT: Creates and maintains audiobook processing directories
+2. AUDIO DISCOVERY: Locates and validates audio files across directory structures
+3. M4B CONVERSION: Converts WAV chunks to M4B audiobook format using FFmpeg
+4. METADATA HANDLING: Adds cover art, chapters, and book information to audiobooks
+5. FILE VALIDATION: Ensures audio file compatibility and format requirements
+6. VOICE SAMPLE MANAGEMENT: Handles voice sample discovery and validation
+
+KEY OPERATIONS:
+- Directory structure setup for new audiobooks
+- Audio chunk discovery and organization
+- WAV to M4B conversion with chapter markers
+- Cover art integration and metadata embedding
+- File compatibility checking (24kHz requirement for voice samples)
+- Final audiobook packaging and organization
+
+DIRECTORY STRUCTURE MANAGED:
+```
+Audiobook/[book_name]/
+├── TTS/
+│   ├── text_chunks/     # Individual text chunk files
+│   └── audio_chunks/    # Generated WAV audio chunks
+├── [book_name].m4b      # Final audiobook file
+├── processing.log       # Processing logs
+└── metadata files       # Cover art, chapter info
+```
+
+TECHNICAL FEATURES:
+- FFmpeg integration for media processing
+- Automatic cover art detection and integration
+- Chapter marker generation from chunk structure
+- Metadata preservation across format conversions
+- File system safety with validation and error handling
+- Cross-platform file operations (Windows/Linux/Mac)
+
+PERFORMANCE CONSIDERATIONS:
+Handles large audio files efficiently with streaming processing
+and manages disk space through temporary file cleanup.
 """
 
 import subprocess
@@ -11,6 +55,24 @@ import time
 import logging
 from pathlib import Path
 from config.config import *
+
+# FFmpeg availability check
+def is_ffmpeg_available():
+    """Check if FFmpeg is available in system PATH"""
+    try:
+        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+def ffmpeg_error_message():
+    """Standard error message for missing FFmpeg"""
+    return ("FFmpeg is not installed or not found in system PATH.\n"
+            "M4B audiobook creation requires FFmpeg.\n\n"
+            "To install FFmpeg:\n"
+            "• Windows: Download from https://ffmpeg.org/download.html\n"
+            "• Or re-run the installation script\n\n"
+            "WAV audio generation will continue to work normally.")
 
 # ============================================================================
 # VOICE SAMPLE MANAGEMENT
@@ -63,12 +125,18 @@ def run_ffmpeg(cmd):
 # M4B CONVERSION WITH NORMALIZATION
 # ============================================================================
 
-def convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, target_db=-3.0, custom_speed=None):
+def convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, target_db=-3.0, custom_speed=None, custom_sample_rate=None):
     """Convert WAV to M4B with peak normalization"""
+    if not is_ffmpeg_available():
+        error_msg = ffmpeg_error_message()
+        print(f"❌ Cannot convert to M4B: {error_msg}")
+        raise FileNotFoundError(error_msg)
+        
     print("🚀 Converting to m4b with peak normalization...")
 
     # Build audio filter chain
     speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
+    sample_rate_to_use = custom_sample_rate if custom_sample_rate is not None else M4B_SAMPLE_RATE
     audio_filters = [f"loudnorm=I=-16:TP={target_db}:LRA=11"]
     if speed_to_use != 1.0:
         audio_filters.append(f"atempo={speed_to_use}")
@@ -79,6 +147,7 @@ def convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, target_db=-3
         "ffmpeg", "-y",
         "-i", str(wav_path),
         "-af", ",".join(audio_filters),
+        "-ar", str(M4B_SAMPLE_RATE),
         "-c:a", "aac",
         str(temp_m4b_path)
     ]
@@ -99,8 +168,13 @@ def convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, target_db=-3
     process.wait()
     print("\n✅ Conversion with normalization complete.")
 
-def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_speed=None):
+def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_speed=None, custom_sample_rate=None):
     """Convert WAV to M4B with two-pass loudness normalization"""
+    if not is_ffmpeg_available():
+        error_msg = ffmpeg_error_message()
+        print(f"❌ Cannot convert to M4B: {error_msg}")
+        raise FileNotFoundError(error_msg)
+        
     import json
 
     print("🚀 Converting to m4b with loudness normalization...")
@@ -135,6 +209,7 @@ def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_s
     
     # Build audio filter chain  
     speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
+    sample_rate_to_use = custom_sample_rate if custom_sample_rate is not None else M4B_SAMPLE_RATE
     audio_filters = [f"loudnorm=I=-16:TP=-1.5:LRA=11:measured_I={loudness_data['input_i']}:measured_LRA={loudness_data['input_lra']}:measured_TP={loudness_data['input_tp']}:measured_thresh={loudness_data['input_thresh']}:offset={loudness_data['target_offset']}:linear=true:print_format=summary"]
     if speed_to_use != 1.0:
         audio_filters.append(f"atempo={speed_to_use}")
@@ -143,6 +218,7 @@ def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_s
         "ffmpeg", "-y",
         "-i", str(wav_path),
         "-af", ",".join(audio_filters),
+        "-ar", str(M4B_SAMPLE_RATE),
         "-c:a", "aac",
         str(temp_m4b_path)
     ]
@@ -163,12 +239,18 @@ def convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_s
     process.wait()
     print("\n✅ Two-pass normalization complete.")
 
-def convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, target_db=-6.0, custom_speed=None):
+def convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, target_db=-6.0, custom_speed=None, custom_sample_rate=None):
     """Convert WAV to M4B with simple peak normalization"""
+    if not is_ffmpeg_available():
+        error_msg = ffmpeg_error_message()
+        print(f"❌ Cannot convert to M4B: {error_msg}")
+        raise FileNotFoundError(error_msg)
+        
     print("🚀 Converting to m4b with simple normalization...")
 
     # Build audio filter chain
     speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
+    sample_rate_to_use = custom_sample_rate if custom_sample_rate is not None else M4B_SAMPLE_RATE
     audio_filters = [f"volume={target_db}dB"]
     if speed_to_use != 1.0:
         audio_filters.append(f"atempo={speed_to_use}")
@@ -177,6 +259,7 @@ def convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, target_db=
         "ffmpeg", "-y",
         "-i", str(wav_path),
         "-af", ",".join(audio_filters),
+        "-ar", str(M4B_SAMPLE_RATE),
         "-c:a", "aac",
         str(temp_m4b_path)
     ]
@@ -197,10 +280,17 @@ def convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, target_db=
     process.wait()
     print("\n✅ Simple normalization complete.")
 
-def convert_to_m4b(wav_path, temp_m4b_path, custom_speed=None):
-    """Convert WAV to M4B with configurable normalization and optional custom speed"""
+def convert_to_m4b(wav_path, temp_m4b_path, custom_speed=None, custom_sample_rate=None):
+    """Convert WAV to M4B with configurable normalization and optional custom speed/sample rate"""
+    if not is_ffmpeg_available():
+        error_msg = ffmpeg_error_message()
+        print(f"❌ Cannot convert to M4B: {error_msg}")
+        raise FileNotFoundError(error_msg)
+        
     # Determine speed to use (custom speed overrides config)
     speed_to_use = custom_speed if custom_speed is not None else ATEMPO_SPEED
+    # Determine sample rate to use (custom sample rate overrides config)
+    sample_rate_to_use = custom_sample_rate if custom_sample_rate is not None else M4B_SAMPLE_RATE
     
     if not ENABLE_NORMALIZATION or NORMALIZATION_TYPE == "none":
         # Original function without normalization
@@ -215,21 +305,22 @@ def convert_to_m4b(wav_path, temp_m4b_path, custom_speed=None):
             "ffmpeg", "-y",
             "-i", str(wav_path)
         ] + audio_filter + [
+            "-ar", str(sample_rate_to_use),
             "-c:a", "aac",
             str(temp_m4b_path)
         ]
 
     elif NORMALIZATION_TYPE == "loudness":
         # EBU R128 loudness normalization (recommended for audiobooks)
-        return convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_speed)
+        return convert_to_m4b_with_loudness_normalization(wav_path, temp_m4b_path, custom_speed, custom_sample_rate)
 
     elif NORMALIZATION_TYPE == "peak":
         # Peak normalization
-        return convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB, custom_speed)
+        return convert_to_m4b_with_peak_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB, custom_speed, custom_sample_rate)
 
     elif NORMALIZATION_TYPE == "simple":
         # Simple volume adjustment
-        return convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB, custom_speed)
+        return convert_to_m4b_with_simple_normalization(wav_path, temp_m4b_path, TARGET_PEAK_DB, custom_speed, custom_sample_rate)
 
     else:
         # Fallback to no normalization
@@ -242,6 +333,7 @@ def convert_to_m4b(wav_path, temp_m4b_path, custom_speed=None):
             "ffmpeg", "-y",
             "-i", str(wav_path)
         ] + audio_filter + [
+            "-ar", str(sample_rate_to_use),
             "-c:a", "aac",
             str(temp_m4b_path)
         ]
@@ -265,6 +357,11 @@ def convert_to_m4b(wav_path, temp_m4b_path, custom_speed=None):
 
 def add_metadata_to_m4b(temp_m4b_path, final_m4b_path, cover_path=None, nfo_path=None):
     """Add metadata and cover to M4B"""
+    if not is_ffmpeg_available():
+        error_msg = ffmpeg_error_message()
+        print(f"❌ Cannot add metadata to M4B: {error_msg}")
+        raise FileNotFoundError(error_msg)
+        
     cmd = ["ffmpeg", "-y", "-i", str(temp_m4b_path)]
 
     if cover_path and cover_path.exists():

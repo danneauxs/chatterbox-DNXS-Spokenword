@@ -9,16 +9,11 @@ import time
 import logging
 import shutil
 import sys
-import os
-import subprocess
-import psutil
 import numpy as np
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import torchaudio as ta
-import queue
-import threading
 
 from config.config import *
 from modules.text_processor import smart_punctuate, sentence_chunk_text, detect_content_boundaries
@@ -59,6 +54,16 @@ from modules.file_manager import (
 )
 from modules.progress_tracker import setup_logging, log_chunk_progress, log_run
 
+# Global shutdown flag
+shutdown_requested = False
+
+# Console colors
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+CYAN = '\033[96m'
+RESET = '\033[0m'
+
 # ============================================================================
 # MEMORY AND MODEL MANAGEMENT
 # ============================================================================
@@ -87,185 +92,10 @@ def monitor_vram_usage(operation_name=""):
 
         if allocated > VRAM_SAFETY_THRESHOLD:
             logging.warning(f"⚠️ High VRAM usage during {operation_name}: {allocated:.1f}GB allocated, {reserved:.1f}GB reserved")
-            optimize_cuda_memory_usage()
+            optimize_memory_usage()
 
         return allocated, reserved
     return 0, 0
-
-# ============================================================================
-# PERFORMANCE OPTIMIZATION UTILITIES
-# ============================================================================
-
-def detect_deployment_environment():
-    """Detect deployment environment for optimization adaptation"""
-    if os.getenv("RUNPOD_POD_ID"):
-        return "runpod"
-    elif os.getenv("SPACE_ID"):  # Hugging Face Spaces
-        return "huggingface"
-    elif os.path.exists("/.dockerenv"):
-        return "container"
-    elif torch.cuda.is_available():
-        return "local_gpu"
-    else:
-        return "local_cpu"
-
-def get_available_memory():
-    """Get available system memory in MB"""
-    try:
-        memory = psutil.virtual_memory()
-        return memory.available // (1024 * 1024)
-    except:
-        return 8192  # Safe default of 8GB
-
-def has_nvidia_smi():
-    """Check if nvidia-smi is available"""
-    try:
-        subprocess.run(['nvidia-smi', '--version'], capture_output=True, check=True)
-        return True
-    except:
-        return False
-
-def enable_gpu_persistence_mode():
-    """Enable GPU persistence mode with proper fallbacks"""
-    if not ENABLE_GPU_PERSISTENCE_MODE:
-        return False
-        
-    try:
-        if torch.cuda.is_available() and has_nvidia_smi():
-            for attempt in range(GPU_PERSISTENCE_RETRY_COUNT):
-                result = subprocess.run(['nvidia-smi', '-pm', '1'], 
-                                     capture_output=True, text=True)
-                if result.returncode == 0:
-                    logging.info("✅ GPU persistence mode enabled")
-                    return True
-                elif "Insufficient permissions" in result.stderr:
-                    logging.warning("⚠️ GPU persistence mode failed (insufficient privileges)")
-                    break
-                time.sleep(0.5)  # Brief delay between attempts
-            
-            logging.warning("📝 Continuing with standard GPU power management")
-        else:
-            logging.info("ℹ️ GPU persistence mode not applicable (no NVIDIA GPU detected)")
-    except Exception as e:
-        logging.warning(f"⚠️ GPU persistence mode failed: {e}")
-    
-    return False
-
-def setup_cuda_memory_pool():
-    """Configure CUDA memory pool for enhanced performance and reduced fragmentation"""
-    if not ENABLE_CUDA_MEMORY_POOL or not torch.cuda.is_available():
-        return False
-    
-    try:
-        # Get current device and memory info
-        device = torch.cuda.current_device()
-        total_memory = torch.cuda.get_device_properties(device).total_memory
-        total_memory_gb = total_memory / (1024**3)
-        
-        deployment_env = detect_deployment_environment()
-        
-        # Adaptive pool sizing based on environment and available memory
-        if ENABLE_ADAPTIVE_MEMORY_POOL:
-            if deployment_env == "runpod":
-                pool_fraction = min(CUDA_MEMORY_POOL_FRACTION, 0.85)  # More conservative on RunPod
-            elif deployment_env == "huggingface":
-                pool_fraction = min(CUDA_MEMORY_POOL_FRACTION, 0.75)  # Very conservative on HF Spaces
-            elif total_memory_gb < 8:
-                pool_fraction = min(CUDA_MEMORY_POOL_FRACTION, 0.8)   # Conservative for <8GB GPUs
-            else:
-                pool_fraction = CUDA_MEMORY_POOL_FRACTION  # Use full config for high-memory GPUs
-        else:
-            pool_fraction = CUDA_MEMORY_POOL_FRACTION
-        
-        # Calculate pool size
-        pool_size = int(total_memory * pool_fraction)
-        pool_size_gb = pool_size / (1024**3)
-        
-        # Configure memory pool allocator settings
-        # Set memory pool to reduce fragmentation and improve allocation speed
-        if hasattr(torch.cuda, 'memory') and hasattr(torch.cuda.memory, 'set_per_process_memory_fraction'):
-            torch.cuda.memory.set_per_process_memory_fraction(pool_fraction, device)
-            logging.info(f"✅ CUDA memory pool configured: {pool_size_gb:.1f}GB ({pool_fraction*100:.0f}% of {total_memory_gb:.1f}GB)")
-        
-        # Configure allocator settings for better memory management
-        if hasattr(torch.cuda, 'empty_cache'):
-            # Clear any existing allocations before setting up pool
-            torch.cuda.empty_cache()
-        
-        # Enable memory pool optimizations if available in PyTorch version
-        try:
-            # Try to enable expandable segments for better memory utilization
-            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-            logging.info("✅ CUDA expandable segments enabled")
-        except:
-            pass  # Not available in all PyTorch versions
-            
-        # Warm up the memory pool with a small allocation
-        try:
-            warmup_tensor = torch.zeros(1024, 1024, device=device)
-            del warmup_tensor
-            torch.cuda.empty_cache()
-            logging.info("✅ CUDA memory pool warmed up")
-        except Exception as e:
-            logging.warning(f"⚠️ Memory pool warmup failed: {e}")
-        
-        logging.info(f"🚀 CUDA memory pool setup complete - environment: {deployment_env}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ CUDA memory pool setup failed: {e}")
-        return False
-
-def optimize_cuda_memory_usage():
-    """Advanced CUDA memory optimization for better performance"""
-    if not torch.cuda.is_available():
-        return
-        
-    try:
-        # More aggressive cleanup for memory pool systems
-        torch.cuda.empty_cache()
-        
-        # Synchronize to ensure all operations complete before cleanup
-        torch.cuda.synchronize()
-        
-        # Additional memory pool optimization if available
-        if hasattr(torch.cuda, 'reset_peak_memory_stats'):
-            torch.cuda.reset_peak_memory_stats()
-            
-    except Exception as e:
-        logging.warning(f"⚠️ CUDA memory optimization failed: {e}")
-
-# Global voice embedding cache
-_voice_embedding_cache = {}
-_cache_memory_usage = 0
-
-def get_voice_cache_key(voice_path, exaggeration):
-    """Generate cache key for voice embeddings"""
-    try:
-        # Use file path and modification time for cache invalidation
-        stat = os.stat(voice_path)
-        return f"{voice_path}:{stat.st_mtime}:{exaggeration}"
-    except:
-        return f"{voice_path}:{exaggeration}"
-
-def clear_voice_embedding_cache():
-    """Clear voice embedding cache to free memory"""
-    global _voice_embedding_cache, _cache_memory_usage
-    _voice_embedding_cache.clear()
-    _cache_memory_usage = 0
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    logging.info("🗑️ Voice embedding cache cleared")
-
-def estimate_cache_memory_mb(conds_object):
-    """Estimate memory usage of cached voice embeddings in MB"""
-    try:
-        if hasattr(conds_object, 't3') and hasattr(conds_object.t3, 'voice_embed'):
-            # Rough estimate based on typical voice embedding sizes
-            return 50  # Typical voice embedding ~50MB
-        return 30  # Conservative estimate
-    except:
-        return 30
 
 def get_optimal_workers():
     """Dynamic worker allocation based on VRAM usage"""
@@ -362,298 +192,27 @@ def get_best_available_device():
     return "cpu"
 
 def load_optimized_model(device):
-    """Load TTS model with memory optimizations and device fallback"""
+    """Load TTS model with memory optimizations"""
     from src.chatterbox.tts import ChatterboxTTS
-    
-    # Validate device availability
-    original_device = device
-    try:
-        if device == "cuda":
-            # Test CUDA availability with a small operation
-            test_tensor = torch.tensor([1.0]).to("cuda")
-            del test_tensor
-            torch.cuda.empty_cache()
-            logging.info(f"✅ CUDA device validated successfully")
-        elif device == "mps" and torch.backends.mps.is_available():
-            # Test MPS availability
-            test_tensor = torch.tensor([1.0]).to("mps")
-            del test_tensor
-            logging.info(f"✅ MPS device validated successfully")
-    except Exception as e:
-        logging.warning(f"⚠️ Device {device} failed validation: {e}")
-        logging.info("🔄 Falling back to CPU")
-        device = "cpu"
 
     try:
-        # Load model with validated device (ChatterboxTTS doesn't support torch_dtype parameter)
+        # Try to load with FP16 if supported
+        model = ChatterboxTTS.from_pretrained(device=device, torch_dtype=torch.float16)
+        logging.info("✅ Loaded model in FP16 mode (halved VRAM usage)")
+    except:
+        # Fallback to default loading
         model = ChatterboxTTS.from_pretrained(device=device)
-        logging.info(f"✅ Model loaded successfully on {device.upper()}")
-        
-        if original_device != device:
-            logging.info(f"📝 Note: Requested {original_device.upper()} but using {device.upper()} due to availability")
-            
-    except Exception as e:
-        logging.error(f"❌ Failed to load model on {device}: {e}")
-        if device != "cpu":
-            logging.info("🔄 Final fallback to CPU...")
-            device = "cpu"
-            model = ChatterboxTTS.from_pretrained(device=device)
-            logging.info("✅ Model loaded on CPU as final fallback")
-        else:
-            raise RuntimeError(f"Failed to load model even on CPU: {e}")
+        logging.info("⚠️ Using FP32 mode (FP16 not supported)")
 
     # Only apply eval() and benchmark if the model has these attributes
     if hasattr(model, 'eval'):
         model.eval()
 
-    # Set CUDNN benchmark for performance (if available and using CUDA)
-    if device == "cuda" and torch.backends.cudnn.is_available():
+    # Set CUDNN benchmark for performance (if available)
+    if torch.backends.cudnn.is_available():
         torch.backends.cudnn.benchmark = True
-        logging.info("✅ CUDNN benchmark enabled for performance")
-    
-    # Initialize CUDA memory pool if enabled and using CUDA
-    if device == "cuda" and ENABLE_CUDA_MEMORY_POOL:
-        memory_pool_success = setup_cuda_memory_pool()
-        if memory_pool_success:
-            logging.info("🚀 CUDA memory pool optimization enabled")
-        else:
-            logging.warning("⚠️ CUDA memory pool setup failed, continuing without optimization")
 
     return model
-
-# ============================================================================
-# PRODUCER-CONSUMER PIPELINE (PHASE 4)
-# ============================================================================
-
-def chunk_producer_thread(all_chunks, chunk_queue, start_index=0, max_queue_size=10):
-    """
-    Producer thread that pre-loads chunks into a queue for worker threads to consume.
-    This eliminates chunk loading overhead during TTS processing.
-    
-    Args:
-        all_chunks: List of chunk data (dict format with text, boundary_type, etc)
-        chunk_queue: Queue to place prepared chunk data
-        start_index: Index to start producing from (for resume functionality)  
-        max_queue_size: Maximum queue size to prevent memory overflow
-    """
-    try:
-        logging.info(f"🏭 Producer thread started - pre-loading chunks from index {start_index}")
-        
-        for i, chunk_data in enumerate(all_chunks[start_index:], start=start_index):
-            # Check if we should stop (via sentinel or shutdown)
-            if shutdown_requested:
-                break
-                
-            # Handle both dictionary and tuple formats for backward compatibility
-            if isinstance(chunk_data, dict):
-                chunk_text = chunk_data["text"]
-                boundary_type = chunk_data.get("boundary_type", "none")
-                chunk_tts_params = chunk_data.get("tts_params", None)
-            else:
-                # Handle old tuple format (text, is_para_end)
-                chunk_text = chunk_data[0] if len(chunk_data) > 0 else str(chunk_data)
-                is_old_para_end = chunk_data[1] if len(chunk_data) > 1 else False
-                boundary_type = "paragraph_end" if is_old_para_end else "none"
-                chunk_tts_params = None
-            
-            # Create standardized chunk package for workers
-            chunk_package = {
-                'index': i,
-                'text': chunk_text,
-                'boundary_type': boundary_type,
-                'tts_params': chunk_tts_params
-            }
-            
-            # Put chunk in queue (blocks if queue is full)
-            chunk_queue.put(chunk_package, timeout=30)
-            
-            # Log progress every 50 chunks to avoid spam
-            if (i + 1) % 50 == 0:
-                logging.info(f"📦 Producer queued {i + 1} chunks")
-        
-        logging.info(f"✅ Producer thread completed - {len(all_chunks) - start_index} chunks queued")
-        
-    except Exception as e:
-        logging.error(f"❌ Producer thread failed: {e}")
-    finally:
-        # Signal completion by adding sentinel value
-        try:
-            chunk_queue.put(None, timeout=5)  # None = end of chunks signal
-        except queue.Full:
-            logging.warning("⚠️ Could not add completion signal - queue full")
-
-def process_chunks_with_pipeline(
-    all_chunks, batch_chunks, chunk_offset, text_chunks_dir, audio_chunks_dir,
-    voice_path, tts_params, start_time, total_chunks, punc_norm, book_name,
-    log_run_func, log_path, device, model, asr_model, asr_enabled, optimal_workers,
-    accumulated_audio_duration=0.0
-):
-    """
-    Enhanced chunk processing with producer-consumer pipeline for 5-10% performance improvement.
-    
-    Args:
-        all_chunks: Complete list of all chunks (for context)
-        batch_chunks: Current batch of chunks to process
-        chunk_offset: Offset for global chunk indexing
-        ... (other parameters same as original ThreadPoolExecutor pattern)
-        
-    Returns:
-        Tuple of (batch_results, total_audio_duration) where:
-        - batch_results: List of (index, wav_path) tuples for successful chunks  
-        - total_audio_duration: Total audio duration for batch (for progress tracking)
-    """
-    try:
-        # Create thread-safe queue with size limit to prevent memory overflow  
-        max_queue_size = min(optimal_workers * 3, 20)  # 3x workers or 20, whichever is smaller
-        chunk_queue = queue.Queue(maxsize=max_queue_size)
-        
-        # Start producer thread to pre-load chunks
-        producer_thread = threading.Thread(
-            target=chunk_producer_thread,
-            args=(batch_chunks, chunk_queue, 0, max_queue_size),
-            daemon=True
-        )
-        producer_thread.start()
-        
-        logging.info(f"🚀 Producer-consumer pipeline started with queue size {max_queue_size}")
-        
-        # Consumer pattern: workers pull from queue instead of sequential loading
-        batch_results = []
-        futures = []
-        
-        with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
-            # Process chunks as they become available and handle results in real-time
-            chunks_submitted = 0
-            completed_count = 0
-            total_audio_duration = accumulated_audio_duration
-            
-            # Import audio processing functions
-            from modules.audio_processor import get_chunk_audio_duration
-            from modules.progress_tracker import log_chunk_progress
-            
-            while True:
-                try:
-                    # Get next chunk from producer (blocks until available)
-                    chunk_package = chunk_queue.get(timeout=10)
-                    
-                    # Check for completion signal
-                    if chunk_package is None:
-                        break
-                    
-                    # Check for shutdown request
-                    if shutdown_requested:
-                        logging.info("🛑 Shutdown requested - stopping chunk submission")
-                        break
-                    
-                    # Extract chunk data from package
-                    global_chunk_index = chunk_offset + chunk_package['index']
-                    chunk_text = chunk_package['text']
-                    boundary_type = chunk_package['boundary_type']
-                    chunk_tts_params = chunk_package.get('tts_params') or tts_params
-                    
-                    # Build context for chunk (all chunk texts)
-                    all_chunk_texts = []
-                    for cd in all_chunks:
-                        if isinstance(cd, dict):
-                            all_chunk_texts.append(cd["text"])
-                        else:
-                            all_chunk_texts.append(cd[0] if len(cd) > 0 else str(cd))
-                    
-                    # Submit chunk to worker thread
-                    future = executor.submit(
-                        process_one_chunk,
-                        global_chunk_index, chunk_text, text_chunks_dir, audio_chunks_dir,
-                        voice_path, chunk_tts_params, start_time, total_chunks,
-                        punc_norm, book_name, log_run_func, log_path, device,
-                        model, asr_model, all_chunk_texts, boundary_type,
-                        asr_enabled
-                    )
-                    futures.append(future)
-                    
-                    chunks_submitted += 1
-                    chunk_queue.task_done()
-                    
-                    # Check for completed futures while submitting new ones
-                    completed_futures = []
-                    for fut in futures:
-                        if fut.done():
-                            completed_futures.append(fut)
-                    
-                    # Process completed futures
-                    for fut in completed_futures:
-                        try:
-                            idx, wav_path = fut.result()
-                            if wav_path and wav_path.exists():
-                                batch_results.append((idx, wav_path))
-                                
-                                # Update totals for final batch calculation
-                                chunk_duration = get_chunk_audio_duration(wav_path)
-                                total_audio_duration += chunk_duration
-                                completed_count += 1
-                                
-                            futures.remove(fut)  # Remove completed future
-                                
-                        except Exception as e:
-                            logging.error(f"❌ Future failed during real-time processing: {e}")
-                            futures.remove(fut)
-                        
-                except queue.Empty:
-                    # Timeout waiting for chunks - check if producer is done
-                    if not producer_thread.is_alive():
-                        break
-                    else:
-                        # Producer still working - check for completed futures while waiting
-                        completed_futures = [fut for fut in futures if fut.done()]
-                        for fut in completed_futures:
-                            try:
-                                idx, wav_path = fut.result()
-                                if wav_path and wav_path.exists():
-                                    batch_results.append((idx, wav_path))
-                                    
-                                    chunk_duration = get_chunk_audio_duration(wav_path)
-                                    total_audio_duration += chunk_duration
-                                    completed_count += 1
-                                    
-                                futures.remove(fut)
-                                
-                            except Exception as e:
-                                logging.error(f"❌ Future failed during timeout processing: {e}")
-                                futures.remove(fut)
-                        continue
-                        
-                except Exception as e:
-                    logging.error(f"❌ Error in consumer loop: {e}")
-                    break
-        
-        # Process any remaining futures
-        if futures:
-            for fut in as_completed(futures):
-                try:
-                    idx, wav_path = fut.result()
-                    if wav_path and wav_path.exists():
-                        batch_results.append((idx, wav_path))
-                        
-                        # Update batch totals
-                        chunk_duration = get_chunk_audio_duration(wav_path)
-                        total_audio_duration += chunk_duration
-                        completed_count += 1
-                            
-                except Exception as e:
-                    logging.error(f"❌ Final future failed: {e}")
-        
-        # Wait for producer thread to complete cleanly
-        if producer_thread.is_alive():
-            producer_thread.join(timeout=5)
-        
-        # Calculate batch-specific audio duration for return
-        batch_audio_duration = total_audio_duration - accumulated_audio_duration
-        logging.info(f"🎉 Producer-consumer pipeline completed: {len(batch_results)} chunks processed")
-        return batch_results, batch_audio_duration
-        
-    except Exception as e:
-        logging.error(f"❌ Producer-consumer pipeline failed: {e}")
-        logging.info("🔄 Falling back to sequential processing...")
-        return [], 0.0  # Return empty results to trigger fallback
 
 # ============================================================================
 # CHUNK PROCESSING
@@ -671,11 +230,86 @@ def patch_alignment_layer(tfmr, alignment_layer_idx=12):
 
     target_layer.forward = MethodType(patched_forward, target_layer)
 
+def process_batch(
+    batch, text_chunks_dir, audio_chunks_dir,
+    voice_path, tts_params, start_time, total_chunks,
+    punc_norm, basename, log_run_func, log_path, device,
+    model, asr_model, all_chunks,
+    enable_asr=None
+):
+    """
+    Process a batch of chunks using the batch-enabled TTS model.
+    """
+    from pydub import AudioSegment
+    import io
+    import soundfile as sf
+
+    # 1. Prepare batch for TTS
+    texts = [chunk_data['text'] for chunk_data in batch]
+    
+    # All params are the same, so we take them from the first chunk
+    shared_tts_params = batch[0].get("tts_params", tts_params)
+    supported_params = {"exaggeration", "cfg_weight", "temperature", "min_p", "top_p", "repetition_penalty"}
+    tts_args = {k: v for k, v in shared_tts_params.items() if k in supported_params}
+
+    # 2. Generate audio in a batch
+    try:
+        with torch.no_grad():
+            wavs = model.generate_batch(texts, **tts_args)
+    except Exception as e:
+        logging.error(f"❌ Batch TTS generation failed: {e}")
+        # Fallback to individual processing for this batch
+        results = []
+        for chunk_data in batch:
+             i = chunk_data['index']
+             chunk = chunk_data['text']
+             boundary_type = chunk_data.get("boundary_type", "none")
+             chunk_tts_params = chunk_data.get("tts_params", tts_params)
+             result = process_one_chunk(i, chunk, text_chunks_dir, audio_chunks_dir, voice_path, chunk_tts_params, start_time, total_chunks, punc_norm, basename, log_run_func, log_path, device, model, asr_model, boundary_type, enable_asr)
+             results.append(result)
+        return results
+
+
+    # 3. Process and save each audio file from the batch
+    batch_results = []
+    for i, wav_tensor in enumerate(wavs):
+        chunk_data = batch[i]
+        chunk_index = chunk_data['index']
+        boundary_type = chunk_data.get("boundary_type", "none")
+        chunk_id_str = f"{chunk_index+1:05}"
+
+        if wav_tensor.dim() == 1:
+            wav_tensor = wav_tensor.unsqueeze(0)
+
+        wav_np = wav_tensor.squeeze().cpu().numpy()
+        with io.BytesIO() as wav_buffer:
+            sf.write(wav_buffer, wav_np, model.sr, format='wav')
+            wav_buffer.seek(0)
+            audio_segment = AudioSegment.from_wav(wav_buffer)
+
+        # Apply trimming and contextual silence
+        from modules.audio_processor import process_audio_with_trimming_and_silence, trim_audio_endpoint
+        if boundary_type and boundary_type != "none":
+            final_audio = process_audio_with_trimming_and_silence(audio_segment, boundary_type)
+        elif ENABLE_AUDIO_TRIMMING:
+            final_audio = trim_audio_endpoint(audio_segment)
+        else:
+            final_audio = audio_segment
+
+        # Final save
+        final_path = audio_chunks_dir / f"chunk_{chunk_id_str}.wav"
+        final_audio.export(final_path, format="wav")
+        logging.info(f"✅ Saved final chunk from batch: {final_path.name}")
+        
+        batch_results.append((chunk_index, final_path))
+
+    return batch_results
+
 def process_one_chunk(
     i, chunk, text_chunks_dir, audio_chunks_dir,
     voice_path, tts_params, start_time, total_chunks,
     punc_norm, basename, log_run_func, log_path, device,
-    model, asr_model, all_chunks, boundary_type="none",
+    model, asr_model, boundary_type="none",
     enable_asr=None
 ):
     """Enhanced chunk processing with quality control, contextual silence, and deep cleanup"""
@@ -899,31 +533,12 @@ def process_one_chunk(
 
     # Enhanced regular cleanup (every chunk)
     del wav
-    optimize_cuda_memory_usage()
+    optimize_memory_usage()
 
     # Additional per-chunk cleanup for long runs
     if (i + 1) % 50 == 0:
         torch.cuda.empty_cache()
         gc.collect()
-
-    # Show ETA progress updates during actual processing (every 2 chunks)
-    if i % 2 == 0:
-        try:
-            from modules.audio_processor import get_chunk_audio_duration  
-            from modules.progress_tracker import log_chunk_progress
-            
-            # Calculate running total audio duration by checking existing chunks
-            total_audio_duration = 0.0
-            for j in range(i + 1):  # Include current chunk
-                check_path = audio_chunks_dir / f"chunk_{j+1:05}.wav"
-                if check_path.exists():
-                    total_audio_duration += get_chunk_audio_duration(check_path)
-            
-            # Show ETA update with accumulated audio
-            log_chunk_progress(i, total_chunks, start_time, total_audio_duration)
-        except Exception as e:
-            # Don't let ETA calculation failures break chunk processing
-            pass
 
     return i, final_path
 
@@ -1222,13 +837,6 @@ def process_book_folder(book_dir, voice_path, tts_params, device, skip_cleanup=F
     log_path = output_root / "chunk_validation.log"
     total_audio_duration = 0.0
 
-    # Initialize performance optimizations
-    deployment_env = detect_deployment_environment()
-    print(f"🌍 Deployment environment: {deployment_env}")
-    
-    # Enable GPU persistence mode for better performance
-    gpu_persistence_enabled = enable_gpu_persistence_mode()
-
     # Batch processing
     print(f"📊 Processing {total_chunks} chunks in batches of {BATCH_SIZE}")
 
@@ -1265,45 +873,51 @@ def process_book_folder(book_dir, voice_path, tts_params, device, skip_cleanup=F
                 print(f"❌ ASR model loading failed completely - disabling ASR for this batch")
                 asr_enabled = False
 
+        futures = []
+        batch_results = []
+
         # Dynamic worker allocation
         optimal_workers = get_optimal_workers()
         print(f"🔧 Using {optimal_workers} workers for batch {batch_start+1}-{batch_end}")
 
-        # Try producer-consumer pipeline first (Phase 4 optimization)
-        batch_results = []
-        if ENABLE_PRODUCER_CONSUMER_PIPELINE:
-            try:
-                print(f"🚀 Producer-consumer pipeline for batch {batch_start+1}-{batch_end}")
-                pipeline_results = process_chunks_with_pipeline(
-                    all_chunks, batch_chunks, batch_start, text_chunks_dir, audio_chunks_dir,
-                    voice_path, tts_params, start_time, total_chunks, punc_norm, book_dir.name,
-                    log_run, log_path, device, model, asr_model, asr_enabled, optimal_workers,
-                    total_audio_duration  # Pass accumulated duration for proper ETA calculation
-                )
-                
-                # Handle tuple return from pipeline
-                if isinstance(pipeline_results, tuple) and len(pipeline_results) == 2:
-                    batch_results, batch_audio_duration = pipeline_results
-                    total_audio_duration += batch_audio_duration
-                else:
-                    # Fallback for old return format
-                    batch_results = pipeline_results
-                
-                if batch_results:
-                    print(f"✅ Producer-consumer pipeline completed: {len(batch_results)} chunks")
-                    # Pipeline already handled progress logging internally
-                
-            except Exception as e:
-                logging.error(f"❌ Producer-consumer pipeline failed: {e}")
-                if not ENABLE_PIPELINE_FALLBACK:
-                    raise
-                batch_results = []  # Clear failed results
-        
-        # Fallback to original sequential processing if pipeline disabled or failed
-        if not batch_results:
-            print(f"🔄 Sequential processing fallback for batch {batch_start+1}-{batch_end}")
-            futures = []
+        use_vader = tts_params.get('use_vader', True)
+
+        if not use_vader:
+            # --- BATCH MODE ---
+            print(f"🚀 VADER disabled. Running in high-performance batch mode.")
+            tts_batch_size = config_params.get('tts_batch_size', 16)
+            chunk_batches = [batch_chunks[i:i + tts_batch_size] for i in range(0, len(batch_chunks), tts_batch_size)]
             
+            print(f"📊 Processing {len(batch_chunks)} chunks in {len(chunk_batches)} batches of size {tts_batch_size}.")
+
+            with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
+                for batch in chunk_batches:
+                    if shutdown_requested:
+                        break
+                    futures.append(executor.submit(
+                        process_batch,
+                        batch, text_chunks_dir, audio_chunks_dir,
+                        voice_path, tts_params, start_time, total_chunks,
+                        punc_norm, book_dir.name, log_run, log_path, device,
+                        model, asr_model, all_chunks, asr_enabled
+                    ))
+                
+                # Wait for batches to complete
+                for fut in as_completed(futures):
+                    try:
+                        # process_batch returns a list of (idx, wav_path) tuples
+                        results_list = fut.result()
+                        for idx, wav_path in results_list:
+                            if wav_path and wav_path.exists():
+                                chunk_duration = get_chunk_audio_duration(wav_path)
+                                total_audio_duration += chunk_duration
+                                batch_results.append((idx, wav_path))
+                        log_chunk_progress(len(batch_results), total_chunks, start_time, total_audio_duration)
+                    except Exception as e:
+                        logging.error(f"Future failed in batch: {e}")
+        else:
+            # --- SINGLE/NUANCED MODE ---
+            print(f"🎨 VADER enabled. Running in nuanced, single-chunk mode.")
             with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
                 for i, chunk_data in enumerate(batch_chunks):
                     global_chunk_index = batch_start + i
@@ -1327,21 +941,14 @@ def process_book_folder(book_dir, voice_path, tts_params, device, skip_cleanup=F
                         boundary_type = "paragraph_end" if is_old_para_end else "none"
                         chunk_tts_params = tts_params # Fallback for old format
 
-                    # Handle both dictionary and tuple formats for backward compatibility
-                    all_chunk_texts = []
-                    for cd in all_chunks:
-                        if isinstance(cd, dict):
-                            all_chunk_texts.append(cd["text"])
-                        else:
-                            # Handle old tuple format (text, is_para_end)
-                            all_chunk_texts.append(cd[0] if len(cd) > 0 else str(cd))
+                    
 
                     futures.append(executor.submit(
                         process_one_chunk,
                         global_chunk_index, chunk, text_chunks_dir, audio_chunks_dir,
                         voice_path, chunk_tts_params, start_time, total_chunks,
                         punc_norm, book_dir.name, log_run, log_path, device,
-                        model, asr_model, all_chunk_texts, boundary_type,
+                        model, asr_model, boundary_type,
                         asr_enabled
                     ))
 
@@ -1358,7 +965,7 @@ def process_book_folder(book_dir, voice_path, tts_params, device, skip_cleanup=F
                             total_audio_duration += chunk_duration
                             batch_results.append((idx, wav_path))
 
-                            # Update progress every 2 chunks within batch
+                            # Update progress every 10 chunks within batch
                             completed_count += 1
                             if completed_count % 2 == 0:
                                 log_chunk_progress(batch_start + completed_count - 1, total_chunks, start_time, total_audio_duration)

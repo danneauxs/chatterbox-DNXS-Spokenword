@@ -18,12 +18,22 @@ from typing import List, Dict, Any, Optional, Tuple
 try:
     from modules.gui_json_generator import generate_audiobook_from_json
     from modules.file_manager import list_voice_samples
-    from config.config import AUDIOBOOK_ROOT
+    from config.config import *
     JSON_GENERATE_AVAILABLE = True
     print("✅ JSON generation functionality available")
 except ImportError as e:
     print(f"⚠️  JSON generation functionality not available: {e}")
     JSON_GENERATE_AVAILABLE = False
+    
+    # Default values
+    AUDIOBOOK_ROOT = 'Audiobook'
+    
+    # Define fallback functions if imports fail
+    def generate_audiobook_from_json(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def list_voice_samples(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
 
 # Global state for JSON generation
 json_state = {

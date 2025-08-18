@@ -115,6 +115,11 @@ TARGET_LRA = 11                       # Target loudness range for consistency
 ATEMPO_SPEED = 1.0
 
 # ============================================================================
+# M4B OUTPUT SETTINGS
+# ============================================================================
+M4B_SAMPLE_RATE = 24000  # Sample rate for M4B output (Hz) - 24kHz optimal for speech
+
+# ============================================================================
 # ENVIRONMENT SETUP
 # ============================================================================
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"

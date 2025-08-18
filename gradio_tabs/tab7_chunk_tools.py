@@ -18,16 +18,45 @@ try:
     from wrapper.chunk_loader import load_chunks, save_chunks
     from wrapper.chunk_search import search_chunks
     from wrapper.chunk_editor import update_chunk
-    from wrapper.chunk_player import play_chunk_audio
     from wrapper.chunk_synthesizer import synthesize_chunk
+    from wrapper.chunk_player import play_chunk_audio
     from wrapper.chunk_revisions import accept_revision
-    from config.config import AUDIOBOOK_ROOT
     from modules.voice_detector import get_likely_voices_for_book
+    from config.config import *
+    
     CHUNK_TOOLS_AVAILABLE = True
     print("✅ Chunk tools functionality available")
 except ImportError as e:
     print(f"⚠️  Chunk tools functionality not available: {e}")
     CHUNK_TOOLS_AVAILABLE = False
+    
+    # Default values
+    AUDIOBOOK_ROOT = 'Audiobook'
+    
+    # Define fallback functions if imports fail
+    def load_chunks(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def save_chunks(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def search_chunks(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def update_chunk(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def play_chunk_audio(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def synthesize_chunk(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def accept_revision(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
+    
+    def get_likely_voices_for_book(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
 
 # Global state for chunk operations
 chunk_state = {

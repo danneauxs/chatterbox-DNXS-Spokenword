@@ -242,11 +242,16 @@ def run_book_conversion(book_path, text_file_path, voice_path, tts_params, quali
         voice_path_obj = Path(voice_path)
         
         # Direct call to TTS engine (same as GUI)
+        # Detect best available device
+        from modules.tts_engine import get_best_available_device
+        device = get_best_available_device()
+        print(f"🖥️ Using device: {device.upper()}")
+        
         result = process_book_folder(
             book_dir=book_dir_path,
             voice_path=voice_path_obj,
             tts_params=tts_params,
-            device="cuda",
+            device=device,
             skip_cleanup=False,
             enable_asr=enable_asr,
             quality_params=quality_params,
@@ -264,42 +269,69 @@ def run_book_conversion(book_path, text_file_path, voice_path, tts_params, quali
         return {'success': False, 'error': str(e)}
 
 def regenerate_m4b_file(selected_m4b, playback_speed):
-    """Regenerate M4B file with new playback speed"""
+    """Regenerate M4B file with new playback speed using unified convert_to_m4b"""
     if not selected_m4b:
         return "❌ Please select an M4B file first", None
     
     try:
         print(f"🔄 Regenerating M4B: {selected_m4b} at {playback_speed}x speed")
         
-        # Import M4B regeneration tools
-        from tools.combine_only import apply_playback_speed_to_m4b
+        # Import unified M4B conversion tools
+        from modules.file_manager import convert_to_m4b, add_metadata_to_m4b
         
-        # Find the M4B file path
+        # Find the M4B file path and corresponding WAV
         audiobook_root = Path("Audiobook")
         m4b_path = None
+        wav_path = None
         
         for book_dir in audiobook_root.iterdir():
             if book_dir.is_dir():
                 for m4b_file in book_dir.glob("*.m4b"):
                     if m4b_file.name == selected_m4b:
                         m4b_path = m4b_file
+                        # Find corresponding WAV file
+                        wav_name = m4b_file.stem + ".wav"
+                        potential_wav = book_dir / wav_name
+                        if potential_wav.exists():
+                            wav_path = potential_wav
                         break
                 if m4b_path:
                     break
         
         if not m4b_path:
             return "❌ M4B file not found", None
+            
+        if not wav_path:
+            return "❌ Corresponding WAV file not found for regeneration", None
         
         # Create new filename with speed suffix
         speed_suffix = f"_speed{playback_speed}x".replace(".", "p")
         new_name = m4b_path.stem + speed_suffix + ".m4b"
-        output_path = m4b_path.parent / new_name
+        temp_m4b_path = m4b_path.parent / f"temp_{new_name}"
+        final_m4b_path = m4b_path.parent / new_name
         
-        # Apply speed change
-        success = apply_playback_speed_to_m4b(str(m4b_path), str(output_path), playback_speed)
+        # Use unified convert_to_m4b with custom speed
+        convert_to_m4b(wav_path, temp_m4b_path, custom_speed=playback_speed)
         
-        if success:
-            return f"✅ Regenerated M4B at {playback_speed}x speed: {new_name}", str(output_path)
+        # Find cover and metadata files
+        cover_path = None
+        nfo_path = None
+        for cover_file in m4b_path.parent.glob("cover.*"):
+            cover_path = cover_file
+            break
+        for nfo_file in m4b_path.parent.glob("book.nfo"):
+            nfo_path = nfo_file
+            break
+        
+        # Add metadata to final M4B
+        add_metadata_to_m4b(temp_m4b_path, final_m4b_path, cover_path, nfo_path)
+        
+        # Clean up temp file
+        if temp_m4b_path.exists():
+            temp_m4b_path.unlink()
+        
+        if final_m4b_path.exists():
+            return f"✅ Regenerated M4B at {playback_speed}x speed: {new_name}", str(final_m4b_path)
         else:
             return "❌ Failed to regenerate M4B", None
             
@@ -349,6 +381,17 @@ def create_convert_book_tab():
             # Right Column - All Settings
             with gr.Column(scale=1):
                 gr.Markdown("### ⚙️ Quick Settings")
+                
+                # NEW: Presets
+                with gr.Row():
+                    preset_dropdown = gr.Dropdown(
+                        label="Load Preset",
+                        choices=list(TTS_PRESETS.keys()),
+                        value="Narration",
+                        interactive=True,
+                        info="Apply predefined TTS parameter settings."
+                    )
+                    apply_preset_btn = gr.Button("Apply Preset", size="sm", variant="secondary")
                 
                 # VADER and ASR
                 vader_enabled = gr.Checkbox(
@@ -531,6 +574,22 @@ def create_convert_book_tab():
                     minimum=1.0, maximum=3.0, step=0.1,
                     value=2.0,
                     info="Reduce repetition"
+                )
+
+                # NEW: TTS Inference Batch Size
+                tts_batch_size = gr.Slider(
+                    label="TTS Inference Batch Size (VADER Off)",
+                    minimum=1, maximum=64, step=1,
+                    value=16, # Default value
+                    info="Number of chunks to process simultaneously when VADER is disabled for speed."
+                )
+
+                # NEW: Random Seed
+                seed = gr.Number(
+                    label="Random Seed (0 for random)",
+                    minimum=0, maximum=999999999, step=1,
+                    value=0, # Default value
+                    info="Set a seed for reproducible generation. 0 means random."
                 )
         
         # Action Buttons and Status
@@ -778,7 +837,8 @@ def create_convert_book_tab():
                         regen_enabled_val, max_attempts_val, quality_thresh_val,
                         sentiment_smooth_val, smooth_window_val, smooth_method_val,
                         mfcc_val, output_val, spectral_thresh_val, output_thresh_val,
-                        exag_val, cfg_val, temp_val, min_p_val, top_p_val, rep_penalty_val):
+                        exag_val, cfg_val, temp_val, min_p_val, top_p_val, rep_penalty_val,
+                        tts_batch_size_val, seed_val):
         """Start the actual book conversion - file upload version"""
         
         # Validation
@@ -881,7 +941,9 @@ def create_convert_book_tab():
             'vader_enabled': vader_val,
             'asr_enabled': asr_val,
             'asr_config': asr_config,
-            'add_to_batch': add_to_batch_val
+            'add_to_batch': add_to_batch_val,
+            'tts_batch_size': tts_batch_size_val,
+            'seed': seed_val
         }
         
         # Set conversion state
@@ -1002,6 +1064,46 @@ def create_convert_book_tab():
         handle_m4b_regeneration,
         inputs=[m4b_file_selector, playback_speed],
         outputs=[status_display, audio_player, audiobook_selector, m4b_file_selector]
+    )
+
+    # NEW: Apply Preset Function
+    def apply_preset(preset_name):
+        if preset_name not in TTS_PRESETS:
+            return gr.update() # No change if preset not found
+
+        preset = TTS_PRESETS[preset_name]
+
+        return (
+            gr.update(value=preset.get("vader_enabled", True)),
+            gr.update(value=preset.get("sentiment_smoothing", True)),
+            gr.update(value=preset.get("smoothing_window", 3)),
+            gr.update(value=preset.get("smoothing_method", "rolling")),
+            gr.update(value=preset.get("exaggeration", DEFAULT_EXAGGERATION)),
+            gr.update(value=preset.get("cfg_weight", DEFAULT_CFG_WEIGHT)),
+            gr.update(value=preset.get("temperature", DEFAULT_TEMPERATURE)),
+            gr.update(value=preset.get("min_p", DEFAULT_MIN_P)),
+            gr.update(value=preset.get("top_p", DEFAULT_TOP_P)),
+            gr.update(value=preset.get("repetition_penalty", DEFAULT_REPETITION_PENALTY)),
+            gr.update(value=preset.get("seed", DEFAULT_SEED)), # NEW
+        )
+
+    # Connect apply_preset_btn
+    apply_preset_btn.click(
+        apply_preset,
+        inputs=[preset_dropdown],
+        outputs=[
+            vader_enabled,
+            sentiment_smoothing,
+            smoothing_window,
+            smoothing_method,
+            exaggeration,
+            cfg_weight,
+            temperature,
+            min_p,
+            top_p,
+            repetition_penalty,
+            seed, # NEW
+        ]
     )
     
     # Progress monitoring with file-based approach

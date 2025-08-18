@@ -16,19 +16,15 @@ from typing import List, Dict, Any, Optional, Tuple
 # Import backend functionality
 try:
     from modules.tts_engine import generate_enriched_chunks
-    from config.config import (
-        AUDIOBOOK_ROOT, TEXT_INPUT_ROOT,
-        BASE_EXAGGERATION, BASE_CFG_WEIGHT, BASE_TEMPERATURE,
-        DEFAULT_MIN_P, DEFAULT_TOP_P, DEFAULT_REPETITION_PENALTY,
-        ENABLE_SENTIMENT_SMOOTHING, SENTIMENT_SMOOTHING_WINDOW, SENTIMENT_SMOOTHING_METHOD,
-        VADER_EXAGGERATION_SENSITIVITY, VADER_CFG_WEIGHT_SENSITIVITY, VADER_TEMPERATURE_SENSITIVITY
-    )
-    PREPARE_TEXT_AVAILABLE = True
-    print("✅ Text preparation functionality available")
+    from config.config import *
+    PREPARE_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  Text preparation functionality not available: {e}")
-    PREPARE_TEXT_AVAILABLE = False
-    # Default values if config not available
+    print(f"⚠️  Prepare text functionality not available: {e}")
+    PREPARE_AVAILABLE = False
+    
+    # Default values
+    AUDIOBOOK_ROOT = 'Audiobook'
+    TEXT_INPUT_ROOT = 'Text_Input'
     BASE_EXAGGERATION = 0.5
     BASE_CFG_WEIGHT = 0.5
     BASE_TEMPERATURE = 0.8
@@ -37,10 +33,14 @@ except ImportError as e:
     DEFAULT_REPETITION_PENALTY = 1.0
     ENABLE_SENTIMENT_SMOOTHING = True
     SENTIMENT_SMOOTHING_WINDOW = 3
-    SENTIMENT_SMOOTHING_METHOD = "gaussian"
+    SENTIMENT_SMOOTHING_METHOD = 'gaussian'
     VADER_EXAGGERATION_SENSITIVITY = 0.3
     VADER_CFG_WEIGHT_SENSITIVITY = 0.3
     VADER_TEMPERATURE_SENSITIVITY = 0.3
+    
+    # Define fallback function
+    def generate_enriched_chunks(*args, **kwargs):
+        raise ImportError("Backend functionality not available")
 
 # Global state for text preparation
 prepare_state = {
@@ -56,7 +56,7 @@ def get_available_text_files():
     """Find available text files for preparation"""
     text_files = []
     
-    if not PREPARE_TEXT_AVAILABLE:
+    if not PREPARE_AVAILABLE:
         return text_files
     
     # Look in Text_Input directory structure
@@ -313,7 +313,7 @@ def create_prepare_text_tab():
         gr.Markdown("# 📝 Prepare Text for Processing")
         gr.Markdown("*Text file preparation with VADER sentiment analysis and chunking - matches GUI Tab 5*")
         
-        if not PREPARE_TEXT_AVAILABLE:
+        if not PREPARE_AVAILABLE:
             gr.Markdown("### ❌ Text Preparation Not Available")
             gr.Markdown("Missing required backend modules. Please ensure modules/tts_engine.py is available.")
             return {}

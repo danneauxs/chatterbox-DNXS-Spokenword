@@ -1,3 +1,49 @@
+"""
+ChatterboxTTS Interactive Chunk Management Tool
+===============================================
+
+OVERVIEW:
+This is the primary interface for chunk-level audiobook editing and refinement.
+It provides interactive tools for editing individual text chunks, regenerating
+audio, and fine-tuning audiobook quality at the granular level.
+
+MAIN COMPONENTS:
+1. CHUNK EDITING: Interactive text editing for individual chunks
+2. AUDIO REGENERATION: Regenerate audio for specific chunks with custom parameters
+3. AUDIO PREVIEW: Play and compare chunk audio before/after edits
+4. BATCH OPERATIONS: Apply changes to multiple chunks simultaneously
+5. QUALITY CONTROL: Identify and fix problematic chunks
+6. REVISION MANAGEMENT: Track and manage chunk editing history
+
+KEY FEATURES:
+- Interactive chunk selection and navigation
+- Real-time audio preview and comparison
+- Custom TTS parameter adjustment per chunk
+- Text editing with immediate audio regeneration
+- Batch processing for similar edits
+- Integration with all chunk utility modules
+
+WORKFLOW:
+Load Audiobook → Select Chunks → Edit Text/Parameters → 
+Preview Audio → Regenerate → Save Changes → Update Final Audiobook
+
+USAGE SCENARIOS:
+- Fixing mispronounced words or names
+- Adjusting emotional tone for specific passages
+- Correcting text errors discovered during review
+- Fine-tuning character voices in dialogue
+- Quality improvements for problematic chunks
+
+TECHNICAL INTEGRATION:
+Coordinates all chunk wrapper modules to provide unified chunk management:
+- chunk_loader: Data management
+- chunk_editor: Text editing
+- chunk_player: Audio preview
+- chunk_synthesizer: Audio regeneration
+- chunk_search: Chunk discovery
+- chunk_revisions: Change tracking
+"""
+
 from wrapper.chunk_loader import load_chunks, save_chunks
 from wrapper.chunk_search import search_chunks
 from wrapper.chunk_editor import update_chunk
