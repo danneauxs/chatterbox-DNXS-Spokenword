@@ -294,7 +294,7 @@ if ($audioWorking) {
 } else {
     Write-Host "Warning: Audio system issue detected:" -ForegroundColor Yellow
     Write-Host "   Voice preview may not work properly" -ForegroundColor Yellow
-    Write-Host "   This won't affect TTS generation - only GUI audio preview" -ForegroundColor Yellow
+    Write-Host "   This will not affect TTS generation - only GUI audio preview" -ForegroundColor Yellow
     Write-Host "   Common fixes:" -ForegroundColor White
     Write-Host "   • Update audio drivers" -ForegroundColor White
     Write-Host "   • Check Windows audio settings" -ForegroundColor White

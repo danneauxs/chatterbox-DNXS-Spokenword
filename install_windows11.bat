@@ -12,9 +12,15 @@ echo This will launch the PowerShell installation script...
 echo.
 
 REM Check if PowerShell script exists
-if not exist "%~dp0install_windows11.ps1" (
-    echo ❌ Error: install_windows11.ps1 not found!
-    echo Please ensure install_windows11.ps1 is in the same folder as this batch file.
+if exist "%~dp0install_windows11_clean.ps1" (
+    set SCRIPT_NAME=install_windows11_clean.ps1
+    echo Using clean installation script...
+) else if exist "%~dp0install_windows11.ps1" (
+    set SCRIPT_NAME=install_windows11.ps1
+    echo Using original installation script...
+) else (
+    echo ❌ Error: No installation script found!
+    echo Please ensure install_windows11.ps1 or install_windows11_clean.ps1 is in the same folder.
     pause
     exit /b 1
 )
@@ -28,7 +34,7 @@ echo.
 echo ⚠️  If you see a security warning, choose [Y] Yes to allow the script to run.
 echo.
 
-powershell.exe -ExecutionPolicy Bypass -File "%~dp0install_windows11.ps1"
+powershell.exe -ExecutionPolicy Bypass -File "%~dp0%SCRIPT_NAME%"
 
 REM Check if PowerShell script succeeded
 if %ERRORLEVEL% EQU 0 (
