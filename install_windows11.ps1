@@ -277,20 +277,12 @@ if (Test-Command "ffmpeg") {
 
 # Test audio system
 Write-Host "🔊 Testing audio system..." -ForegroundColor Yellow
-$audioTestResult = python -c @"
-try:
-    import pygame
-    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
-    pygame.mixer.quit()
-    print('AUDIO_TEST_SUCCESS')
-except Exception as e:
-    print(f'AUDIO_TEST_FAILED: {e}')
-"@
+$audioTestResult = python -c "try:`n    import pygame`n    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)`n    pygame.mixer.quit()`n    print('AUDIO_TEST_SUCCESS')`nexcept Exception as e:`n    print('AUDIO_TEST_FAILED:', e)"
 
 if ($audioTestResult -match "AUDIO_TEST_SUCCESS") {
     Write-Host "✅ Audio system working - voice preview will be available" -ForegroundColor Green
 } else {
-    Write-Host "⚠️  Audio system issue detected:" -ForegroundColor Yellow
+    Write-Host "Warning: Audio system issue detected:" -ForegroundColor Yellow
     Write-Host "   Voice preview may not work properly" -ForegroundColor Yellow
     Write-Host "   This won't affect TTS generation - only GUI audio preview" -ForegroundColor Yellow
     Write-Host "   Common fixes:" -ForegroundColor White
@@ -303,7 +295,7 @@ Write-Host ""
 Write-Host "🎉 Installation Complete!" -ForegroundColor Green
 Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host "📍 Installation location: $InstallPath" -ForegroundColor White
-Write-Host "🚀 Launch GUI: Double-click 'ChatterboxTTS GUI' on desktop" -ForegroundColor White
+Write-Host "🚀 Launch GUI: Double-click ChatterboxTTS GUI on desktop" -ForegroundColor White
 Write-Host "🚀 Launch CLI: Run Launch_CLI.bat in installation folder" -ForegroundColor White
 Write-Host ""
 Write-Host "📖 Next Steps:" -ForegroundColor Yellow
@@ -311,4 +303,4 @@ Write-Host "1. Place .txt books in Text_Input folder" -ForegroundColor White
 Write-Host "2. Place .wav voice samples in Voice_Samples folder" -ForegroundColor White
 Write-Host "3. Launch the GUI and start converting!" -ForegroundColor White
 Write-Host ""
-Write-Host "⚠️  Please restart your computer to ensure all PATH changes take effect." -ForegroundColor Red
+Write-Host "WARNING: Please restart your computer to ensure all PATH changes take effect." -ForegroundColor Red
