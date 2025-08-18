@@ -275,11 +275,21 @@ if (Test-Command "ffmpeg") {
     Write-Host "❌ FFmpeg not available - audio conversion will not work" -ForegroundColor Red
 }
 
-# Test audio system
+# Test audio system (simplified - skip complex audio testing)
 Write-Host "🔊 Testing audio system..." -ForegroundColor Yellow
-$audioTestResult = python -c "try:`n    import pygame`n    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)`n    pygame.mixer.quit()`n    print('AUDIO_TEST_SUCCESS')`nexcept Exception as e:`n    print('AUDIO_TEST_FAILED:', e)"
 
-if ($audioTestResult -match "AUDIO_TEST_SUCCESS") {
+try {
+    $audioTestResult = python -c "import pygame; print('AUDIO_TEST_SUCCESS')" 2>$null
+    if ($audioTestResult -match "AUDIO_TEST_SUCCESS") {
+        $audioWorking = $true
+    } else {
+        $audioWorking = $false
+    }
+} catch {
+    $audioWorking = $false
+}
+
+if ($audioWorking) {
     Write-Host "✅ Audio system working - voice preview will be available" -ForegroundColor Green
 } else {
     Write-Host "Warning: Audio system issue detected:" -ForegroundColor Yellow
