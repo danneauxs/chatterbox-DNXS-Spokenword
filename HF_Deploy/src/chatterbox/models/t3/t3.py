@@ -224,6 +224,7 @@ class T3(nn.Module):
         do_sample=True,
         temperature=0.8,
         top_p=0.8,
+        min_p=0.05,
         length_penalty=1.0,
         repetition_penalty=2.0,
         cfg_weight=0,

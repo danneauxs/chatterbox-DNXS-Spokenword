@@ -11,13 +11,23 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Tuple, List
 
-# Import ChatterboxTTS configuration
+# Import configuration with HuggingFace deployment compatibility
 try:
-    from config.config import *
-    CONFIG_AVAILABLE = True
-except ImportError:
-    print("⚠️  Config not available - using defaults")
+    from .gradio_imports import safe_import_config, get_default_config
+    config_vars, CONFIG_AVAILABLE = safe_import_config()
+    if CONFIG_AVAILABLE:
+        print("✅ Config module loaded successfully")
+        # Update local variables with config values
+        locals().update(config_vars)
+    else:
+        print("⚠️  Config not available - using defaults")
+        # Get default values
+        default_config = get_default_config()
+        locals().update(default_config)
+except ImportError as e:
+    print(f"⚠️  Import system not available: {e} - using fallback defaults")
     CONFIG_AVAILABLE = False
+    # Fallback default values if gradio_imports not available
     MAX_WORKERS = 2
     BATCH_SIZE = 100
     MIN_CHUNK_WORDS = 5
@@ -389,40 +399,21 @@ def create_configuration_tab():
                 'CHUNK_END_SILENCE_MS': int(values[30]) if values[29] else 0
             }
             
-            # Update global config variables that are already imported
-            globals().update(config_values)
+            # Import the config module and update values using safe import
+            try:
+                from .gradio_imports import safe_import
+                config_module = safe_import('config', 'config')
+                for key, value in config_values.items():
+                    if hasattr(config_module, key):
+                        setattr(config_module, key, value)
+            except ImportError:
+                # Fallback to direct import
+                from config import config
+                for key, value in config_values.items():
+                    if hasattr(config, key):
+                        setattr(config, key, value)
             
-            # Write changes to config.py file
-            config_file_path = Path("config/config.py")
-            if not config_file_path.exists():
-                return "❌ Config file not found at config/config.py"
-            
-            # Read current config file
-            with open(config_file_path, 'r') as f:
-                config_content = f.read()
-            
-            # Update values in the file content using regex
-            import re
-            updated_content = config_content
-            for key, value in config_values.items():
-                # Format the value based on type
-                if isinstance(value, bool):
-                    value_str = str(value)
-                elif isinstance(value, str):
-                    value_str = f'"{value}"'
-                else:
-                    value_str = str(value)
-                
-                # Use regex to find and replace the variable assignment
-                pattern = f'^{key}\\s*=.*$'
-                replacement = f'{key} = {value_str}'
-                updated_content = re.sub(pattern, replacement, updated_content, flags=re.MULTILINE)
-            
-            # Write the updated content back to the file
-            with open(config_file_path, 'w') as f:
-                f.write(updated_content)
-            
-            return "✅ Configuration saved successfully to config/config.py!\n🔄 Settings updated in both memory and file."
+            return "✅ Configuration saved successfully!\n🔄 Settings updated in memory. Restart application to persist changes."
             
         except Exception as e:
             return f"❌ Error saving configuration: {str(e)}"
@@ -475,50 +466,51 @@ def create_configuration_tab():
             if not CONFIG_AVAILABLE:
                 return "❌ Configuration module not available"
             
-            # Reload config module to refresh values from file
+            # Reload config module using safe import
             import importlib
-            import sys
-            if 'config.config' in sys.modules:
-                config_module = sys.modules['config.config']
+            try:
+                from .gradio_imports import safe_import
+                config_module = safe_import('config', 'config')
                 importlib.reload(config_module)
-                # Update globals with reloaded values
-                for attr_name in dir(config_module):
-                    if not attr_name.startswith('_'):
-                        globals()[attr_name] = getattr(config_module, attr_name)
+            except ImportError:
+                # Fallback to direct import
+                from config import config
+                config_module = config
+                importlib.reload(config)
             
-            # Return current values (which should now be refreshed)
+            # Return reloaded values
             return (
-                MAX_WORKERS,
-                BATCH_SIZE,
-                MIN_CHUNK_WORDS,
-                MAX_CHUNK_WORDS,
-                ENABLE_NORMALIZATION,
-                TARGET_LUFS,
-                ENABLE_AUDIO_TRIMMING,
-                SPEECH_ENDPOINT_THRESHOLD,
-                TRIMMING_BUFFER_MS,
-                TTS_PARAM_MIN_EXAGGERATION,
-                TTS_PARAM_MAX_EXAGGERATION,
-                TTS_PARAM_MIN_CFG_WEIGHT,
-                TTS_PARAM_MAX_CFG_WEIGHT,
-                TTS_PARAM_MIN_TEMPERATURE,
-                TTS_PARAM_MAX_TEMPERATURE,
-                DEFAULT_EXAGGERATION,
-                DEFAULT_CFG_WEIGHT,
-                DEFAULT_TEMPERATURE,
-                VADER_EXAGGERATION_SENSITIVITY,
-                VADER_CFG_WEIGHT_SENSITIVITY,
-                VADER_TEMPERATURE_SENSITIVITY,
-                SILENCE_CHAPTER_START,
-                SILENCE_CHAPTER_END,
-                SILENCE_SECTION_BREAK,
-                SILENCE_PARAGRAPH_END,
-                SILENCE_COMMA,
-                SILENCE_PERIOD,
-                SILENCE_QUESTION_MARK,
-                SILENCE_EXCLAMATION,
-                CHUNK_END_SILENCE_MS > 0,
-                CHUNK_END_SILENCE_MS,
+                config_module.MAX_WORKERS,
+                config_module.BATCH_SIZE,
+                config_module.MIN_CHUNK_WORDS,
+                config_module.MAX_CHUNK_WORDS,
+                config_module.ENABLE_NORMALIZATION,
+                config_module.TARGET_LUFS,
+                config_module.ENABLE_AUDIO_TRIMMING,
+                config_module.SPEECH_ENDPOINT_THRESHOLD,
+                config_module.TRIMMING_BUFFER_MS,
+                config_module.TTS_PARAM_MIN_EXAGGERATION,
+                config_module.TTS_PARAM_MAX_EXAGGERATION,
+                config_module.TTS_PARAM_MIN_CFG_WEIGHT,
+                config_module.TTS_PARAM_MAX_CFG_WEIGHT,
+                config_module.TTS_PARAM_MIN_TEMPERATURE,
+                config_module.TTS_PARAM_MAX_TEMPERATURE,
+                config_module.DEFAULT_EXAGGERATION,
+                config_module.DEFAULT_CFG_WEIGHT,
+                config_module.DEFAULT_TEMPERATURE,
+                config_module.VADER_EXAGGERATION_SENSITIVITY,
+                config_module.VADER_CFG_WEIGHT_SENSITIVITY,
+                config_module.VADER_TEMPERATURE_SENSITIVITY,
+                config_module.SILENCE_CHAPTER_START,
+                config_module.SILENCE_CHAPTER_END,
+                config_module.SILENCE_SECTION_BREAK,
+                config_module.SILENCE_PARAGRAPH_END,
+                config_module.SILENCE_COMMA,
+                config_module.SILENCE_PERIOD,
+                config_module.SILENCE_QUESTION_MARK,
+                config_module.SILENCE_EXCLAMATION,
+                config_module.CHUNK_END_SILENCE_MS > 0,
+                config_module.CHUNK_END_SILENCE_MS,
                 "✅ Configuration reloaded from file"
             )
             

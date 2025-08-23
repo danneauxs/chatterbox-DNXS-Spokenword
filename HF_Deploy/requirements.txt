@@ -1,7 +1,7 @@
-# ChatterboxTTS HuggingFace Spaces Requirements
-# Optimized for HF Spaces environment with flexible versions
+# ChatterboxTTS Requirements - Main file (works everywhere)
+# Complete dependency list for local development
 
-# Core ML and TTS - Essential (pinned versions for fast builds)
+# Core ML and TTS - Essential
 torch==2.6.0
 torchaudio==2.6.0
 transformers==4.46.3
@@ -21,7 +21,7 @@ openai-whisper>=20231117
 psutil>=5.8.0
 pynvml>=11.0.0
 
-# Core scientific computing (pinned for fast builds)
+# Core scientific computing
 numpy==2.2.0
 scipy>=1.7.0
 
@@ -29,8 +29,12 @@ scipy>=1.7.0
 regex>=2023.0.0
 vaderSentiment>=3.3.0
 
-# Web interface - Gradio (let HF manage version)
+# Web interface - Gradio
 gradio>=4.0.0
+
+# GUI Support - Local development
+PyQt5>=5.15.0
+PyQt5-sip>=12.0.0
 
 # Progress and logging
 tqdm>=4.60.0
@@ -45,8 +49,10 @@ python-dotenv>=1.0.0
 requests>=2.25.0
 packaging>=21.0
 
+# Development tools
+pre-commit>=2.0.0
+
 # Core ChatterboxTTS model dependencies
-chatterbox-tts>=0.1.2
 resemble-perth>=1.0.1
 omegaconf>=2.3.0
 einops>=0.6.0

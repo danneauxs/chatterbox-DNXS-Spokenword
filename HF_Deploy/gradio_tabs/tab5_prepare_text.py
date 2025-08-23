@@ -16,15 +16,19 @@ from typing import List, Dict, Any, Optional, Tuple
 # Import backend functionality
 try:
     from modules.tts_engine import generate_enriched_chunks
-    from config.config import *
-    PREPARE_AVAILABLE = True
+    from config.config import (
+        AUDIOBOOK_ROOT, TEXT_INPUT_ROOT,
+        BASE_EXAGGERATION, BASE_CFG_WEIGHT, BASE_TEMPERATURE,
+        DEFAULT_MIN_P, DEFAULT_TOP_P, DEFAULT_REPETITION_PENALTY,
+        ENABLE_SENTIMENT_SMOOTHING, SENTIMENT_SMOOTHING_WINDOW, SENTIMENT_SMOOTHING_METHOD,
+        VADER_EXAGGERATION_SENSITIVITY, VADER_CFG_WEIGHT_SENSITIVITY, VADER_TEMPERATURE_SENSITIVITY
+    )
+    PREPARE_TEXT_AVAILABLE = True
+    print("✅ Text preparation functionality available")
 except ImportError as e:
-    print(f"⚠️  Prepare text functionality not available: {e}")
-    PREPARE_AVAILABLE = False
-    
-    # Default values
-    AUDIOBOOK_ROOT = 'Audiobook'
-    TEXT_INPUT_ROOT = 'Text_Input'
+    print(f"⚠️  Text preparation functionality not available: {e}")
+    PREPARE_TEXT_AVAILABLE = False
+    # Default values if config not available
     BASE_EXAGGERATION = 0.5
     BASE_CFG_WEIGHT = 0.5
     BASE_TEMPERATURE = 0.8
@@ -33,14 +37,10 @@ except ImportError as e:
     DEFAULT_REPETITION_PENALTY = 1.0
     ENABLE_SENTIMENT_SMOOTHING = True
     SENTIMENT_SMOOTHING_WINDOW = 3
-    SENTIMENT_SMOOTHING_METHOD = 'gaussian'
+    SENTIMENT_SMOOTHING_METHOD = "gaussian"
     VADER_EXAGGERATION_SENSITIVITY = 0.3
     VADER_CFG_WEIGHT_SENSITIVITY = 0.3
     VADER_TEMPERATURE_SENSITIVITY = 0.3
-    
-    # Define fallback function
-    def generate_enriched_chunks(*args, **kwargs):
-        raise ImportError("Backend functionality not available")
 
 # Global state for text preparation
 prepare_state = {
@@ -56,7 +56,7 @@ def get_available_text_files():
     """Find available text files for preparation"""
     text_files = []
     
-    if not PREPARE_AVAILABLE:
+    if not PREPARE_TEXT_AVAILABLE:
         return text_files
     
     # Look in Text_Input directory structure
@@ -204,24 +204,7 @@ def start_text_preparation(
                 text_path = Path(selected_file['path'])
                 book_name = selected_file['book_name']
                 
-                # Validate book path before processing
-                from modules.path_validator import validate_book_path, format_path_warning_text
-                
-                is_safe, warning, suggested_name = validate_book_path(book_name)
-                
-                if not is_safe:
-                    # Path validation failed - return warning to user
-                    prepare_state['status'] = f'❌ UNSAFE PATH: {book_name}'
-                    prepare_state['progress'] = 0
-                    prepare_state['output_path'] = None
-                    
-                    return (
-                        prepare_state,
-                        f"❌ UNSAFE PATH DETECTED\n\n{format_path_warning_text(book_name)}\n\nPlease rename the book folder to use the suggested safe name.",
-                        "Processing stopped due to unsafe path."
-                    )
-                
-                # Create output directory using validated name
+                # Create output directory
                 book_output_dir = Path(AUDIOBOOK_ROOT) / book_name / "TTS" / "text_chunks"
                 book_output_dir.mkdir(parents=True, exist_ok=True)
                 
@@ -330,7 +313,7 @@ def create_prepare_text_tab():
         gr.Markdown("# 📝 Prepare Text for Processing")
         gr.Markdown("*Text file preparation with VADER sentiment analysis and chunking - matches GUI Tab 5*")
         
-        if not PREPARE_AVAILABLE:
+        if not PREPARE_TEXT_AVAILABLE:
             gr.Markdown("### ❌ Text Preparation Not Available")
             gr.Markdown("Missing required backend modules. Please ensure modules/tts_engine.py is available.")
             return {}
@@ -467,7 +450,7 @@ def create_prepare_text_tab():
                 smoothing_method_param = gr.Dropdown(
                     label="Smoothing Method",
                     choices=["gaussian", "moving_average", "exponential"],
-                    value="gaussian",
+                    value=SENTIMENT_SMOOTHING_METHOD,
                     interactive=True,
                     info="Algorithm for sentiment smoothing"
                 )

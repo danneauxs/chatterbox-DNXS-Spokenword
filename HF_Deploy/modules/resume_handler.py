@@ -1,6 +1,47 @@
 """
-Resume Handler Module
-Handles resume functionality for interrupted processing
+ChatterboxTTS Resume Handler Module
+===================================
+
+OVERVIEW:
+This module provides intelligent resume functionality for interrupted audiobook generation.
+It analyzes existing progress, identifies missing chunks, and seamlessly continues processing
+from where it left off, saving hours of work on long audiobooks.
+
+MAIN COMPONENTS:
+1. CHUNK ANALYSIS: Scans existing audio chunks to determine completion status
+2. RESUME POINT DETECTION: Identifies the exact point to continue processing
+3. GAP DETECTION: Finds missing chunks in the sequence for targeted regeneration
+4. STATE RECOVERY: Restores processing state and configuration
+5. SEAMLESS CONTINUATION: Picks up processing without duplicating completed work
+
+KEY FEATURES:
+- Intelligent chunk sequence analysis (handles missing/corrupted chunks)
+- Resume from specific chunk numbers or percentage complete
+- Gap detection and targeted regeneration
+- Progress state preservation across sessions
+- Memory-efficient resume without reprocessing completed chunks
+- Compatible with both JSON and text-based chunk workflows
+
+CRITICAL USE CASES:
+- Long audiobooks interrupted by system crashes or user stops
+- Partial regeneration after chunk repair/editing
+- Continuing processing on different systems/sessions
+- Recovery from VRAM exhaustion or hardware issues
+- Selective chunk regeneration for quality improvements
+
+PERFORMANCE BENEFITS:
+- Saves hours on long audiobook regeneration
+- Preserves completed high-quality chunks
+- Reduces system resource usage
+- Enables iterative quality improvements
+- Supports distributed/interrupted processing workflows
+
+USAGE FLOW:
+1. Analyze existing chunks directory
+2. Determine resume point and missing chunks  
+3. Load original text/JSON configuration
+4. Continue processing from resume point
+5. Fill gaps and complete remaining chunks
 """
 
 import torch
@@ -20,7 +61,37 @@ from modules.audio_processor import get_chunk_audio_duration, pause_for_chunk_re
 from modules.progress_tracker import setup_logging, log_chunk_progress, log_run
 
 def analyze_existing_chunks(audio_chunks_dir):
-    """Analyze existing chunks to determine resume point"""
+    """
+    CHUNK ANALYSIS FUNCTION - Core resume logic
+    ==========================================
+    
+    PURPOSE:
+    Analyzes the existing audio chunks directory to determine:
+    1. How many chunks have been successfully generated
+    2. Where to resume processing (next chunk number)  
+    3. Which chunks are missing from the sequence (gaps to fill)
+    4. Overall completion status and progress percentage
+    
+    ANALYSIS PROCESS:
+    - Scans directory for chunk_XXXXX.wav files
+    - Extracts chunk numbers and sorts them
+    - Identifies highest completed chunk number
+    - Detects gaps in the sequence (missing chunk numbers)
+    - Calculates resume point and missing chunks list
+    
+    PARAMETERS:
+    - audio_chunks_dir: Path to directory containing generated audio chunks
+    
+    RETURNS:
+    - resume_chunk_number: Next chunk number to start processing from
+    - missing_chunks: List of chunk numbers that need regeneration
+    
+    EDGE CASES HANDLED:
+    - Empty directory (start from beginning)
+    - No valid chunks found (start from beginning)  
+    - Gaps in sequence (targeted regeneration)
+    - Out-of-order chunk numbers (robust sorting)
+    """
     if not audio_chunks_dir.exists():
         return 0, []
 

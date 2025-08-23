@@ -233,10 +233,26 @@ def launch_interface():
 
     demo = create_main_interface()
 
-    # Launch configuration
+    # Launch configuration - try multiple ports
+    def find_free_port(start_port=7860, max_attempts=10):
+        import socket
+        for port in range(start_port, start_port + max_attempts):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(('', port))
+                    return port
+            except OSError:
+                continue
+        return None
+    
+    free_port = find_free_port()
+    if free_port is None:
+        print("❌ Could not find a free port in range 7860-7870")
+        return
+    
     launch_kwargs = {
         'server_name': '0.0.0.0',
-        'server_port': 7860,
+        'server_port': free_port,
         'show_error': True,
         'quiet': False
     }
@@ -252,7 +268,7 @@ def launch_interface():
         print("💻 Local deployment")
         launch_kwargs['share'] = False
 
-    print(f"🌐 Interface will be available at: http://localhost:{launch_kwargs['server_port']}")
+    print(f"🌐 Interface will be available at: http://localhost:{free_port}")
 
     try:
         demo.launch(**launch_kwargs)

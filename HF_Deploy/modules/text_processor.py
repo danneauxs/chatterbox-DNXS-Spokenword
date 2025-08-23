@@ -1,6 +1,31 @@
 """
-Text Processing Module
-Handles text chunking, abbreviations, and preprocessing for TTS
+ChatterboxTTS Text Processing Module
+====================================
+
+OVERVIEW:
+This module is the core text preprocessing system for ChatterboxTTS audiobook generation.
+It handles intelligent text chunking, abbreviation replacement, and punctuation normalization
+to prepare raw text for high-quality TTS synthesis.
+
+MAIN COMPONENTS:
+1. ABBREVIATION SYSTEM: Converts TTS-unfriendly abbreviations (Dr. -> Doctor)
+2. TEXT CHUNKING: Breaks text into optimal chunks respecting sentence boundaries
+3. PUNCTUATION NORMALIZATION: Standardizes quotes, adds missing periods
+4. BOUNDARY DETECTION: Identifies chapter/paragraph breaks for silence insertion
+
+CRITICAL ALGORITHM FIXES:
+- Fixed sentence chunking to respect punctuation boundaries (not word counts)
+- Enhanced dialogue handling to prevent quote corruption
+- Improved abbreviation replacement with external file loading
+- Added smart punctuation detection for precise silence timing
+
+USAGE FLOW:
+Text Input → Abbreviation Replacement → Punctuation Normalization → 
+Sentence Chunking → Boundary Detection → JSON Output for TTS
+
+PERFORMANCE IMPACT:
+Proper chunking prevents TTS model confusion and maintains voice consistency
+across long audiobooks by preserving natural speech boundaries.
 """
 
 import re
@@ -9,13 +34,40 @@ from pathlib import Path
 from config.config import MAX_CHUNK_WORDS, MIN_CHUNK_WORDS, YELLOW, RESET
 
 
-
 # ============================================================================
 # ABBREVIATION REPLACEMENT SYSTEM
 # ============================================================================
+# 
+# PURPOSE: Replace TTS-unfriendly abbreviations with pronounceable text
+# EXAMPLES: "Dr. Smith" -> "Doctor Smith", "U.S.A." -> "USA"
+# BENEFITS: Prevents awkward pronunciation and improves audio quality
 
 def load_abbreviations(file_path="utils/abbreviations.txt"):
-    """Load abbreviation replacements from external file"""
+    """
+    Load abbreviation-to-replacement mappings from external text file.
+    
+    PURPOSE:
+    - Centralizes abbreviation management in an editable text file
+    - Allows users to customize TTS pronunciations without code changes
+    - Supports comment lines and flexible formatting
+    
+    FILE FORMAT:
+    # Comments start with #
+    Dr. -> Doctor
+    U.S. -> US
+    etc. -> et cetera
+    
+    PARAMETERS:
+    - file_path: Path to abbreviations file (default: utils/abbreviations.txt)
+    
+    RETURNS:
+    - dict: Mapping of abbreviation -> replacement text
+    
+    BEHAVIOR:
+    - Creates sample file if none exists
+    - Skips malformed lines with warnings
+    - Returns empty dict on file errors (graceful degradation)
+    """
     replacements = {}
     abbrev_file = Path(file_path)
 
@@ -265,20 +317,47 @@ def _is_apostrophe(text, pos):
 
 def sentence_chunk_text(text, max_words=MAX_CHUNK_WORDS, min_words=MIN_CHUNK_WORDS):
     """
-    Simple and reliable text chunking that follows the exact rules:
+    CRITICAL CHUNKING ALGORITHM - Heart of the TTS preprocessing system
+    ================================================================
     
-    TEXT CHUNKING RULES:
-    1. Break at sentence boundaries (. ! ?) first (highest priority)
-    2. If sentence > max_words, break at punctuation working backwards (; — , in that order)
-    3. If no punctuation available, preserve sentence intact to maintain coherence
+    ALGORITHM OVERVIEW:
+    This function is the most important component for TTS quality. It breaks raw text 
+    into optimal chunks that respect natural speech boundaries, preventing TTS model 
+    confusion and maintaining consistent voice characteristics.
+    
+    CORE PRINCIPLE: SENTENCE BOUNDARIES FIRST, WORD COUNTS SECOND
+    - Always prioritize complete sentences over arbitrary word limits
+    - Break long sentences at natural pauses (punctuation hierarchy)
+    - Combine short chunks to meet minimum requirements
+    - Preserve semantic coherence and emotional consistency
+    
+    TEXT CHUNKING RULES (in priority order):
+    1. Break at sentence boundaries (. ! ?) first (HIGHEST PRIORITY)
+    2. If sentence > max_words, break at punctuation working backwards
+    3. If no punctuation available, preserve sentence intact (coherence over limits)
     4. Ensure all chunks meet min_words requirement by combining small chunks
     
-    PUNCTUATION HIERARCHY (for breaking long sentences):
-    1. . ! ? (sentence boundaries) - handled at sentence level
-    2. ; (semicolon) - major pause
-    3. — – (dashes) - major pause  
-    4. , (comma) - minor pause
-    5. Preserve overlong sentences if no punctuation available
+    PUNCTUATION HIERARCHY (for breaking overlong sentences):
+    1. . ! ? (sentence boundaries) - handled at sentence level first
+    2. ; (semicolon) - major pause, good break point
+    3. — – (em/en dashes) - major pause, narrative breaks
+    4. , (comma) - minor pause, last resort for breaks
+    5. NO PUNCTUATION = preserve intact (maintains emotional/semantic unity)
+    
+    WHY THIS APPROACH:
+    - Prevents choppy, robotic speech from mid-sentence breaks
+    - Maintains narrative flow and character voice consistency  
+    - Respects author's punctuation for natural pauses
+    - Reduces TTS model confusion from incomplete thoughts
+    - Essential for long-form audiobook quality
+    
+    PARAMETERS:
+    - text: Raw input text to be chunked
+    - max_words: Target maximum words per chunk (flexible for complete sentences)
+    - min_words: Minimum words per chunk (enforced by combining)
+    
+    RETURNS:
+    - List of (chunk_text, is_paragraph_end) tuples for TTS processing
     """
     import re
     

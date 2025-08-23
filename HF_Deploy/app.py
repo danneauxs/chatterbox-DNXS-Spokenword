@@ -495,10 +495,10 @@ def main():
     launcher.run()
 
 if __name__ == "__main__":
-      # Add current directory to Python path for HF Spaces
+      # Add src directory to Python path for HF Spaces
       import sys
       import os
-      sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+      sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
       
       # Fix OpenMP environment variable for HuggingFace Spaces
       os.environ["OMP_NUM_THREADS"] = "1"

@@ -490,7 +490,8 @@ def create_convert_book_tab():
                 smoothing_method = gr.Dropdown(
                     label="Smoothing Method",
                     choices=["rolling", "exp_decay"],
-                    value=SENTIMENT_SMOOTHING_METHOD
+                    value="rolling",
+                    allow_custom_value=False
                 )
                 
                 gr.Markdown("### 🔍 Advanced Detection")
@@ -691,7 +692,6 @@ def create_convert_book_tab():
                     show_download_button=True,
                     show_share_button=False,
                     waveform_options=gr.WaveformOptions(
-                        show_controls=True,
                         show_recording_waveform=False,
                         skip_length=10
                     )
@@ -946,11 +946,25 @@ def create_convert_book_tab():
             'seed': seed_val
         }
         
+        # Validate book path before starting conversion
+        from modules.path_validator import validate_book_path, format_path_warning_text
+        
+        book_name = book_dir.name
+        is_safe, warning, suggested_name = validate_book_path(book_name)
+        
+        if not is_safe:
+            # Path validation failed - return warning to user
+            return (
+                gr.update(value=f"❌ UNSAFE PATH DETECTED\n\n{format_path_warning_text(book_name)}\n\nPlease rename the book folder or use the suggested name.", visible=True),
+                gr.update(visible=False),  # Hide progress
+                gr.update(visible=True)    # Show output
+            )
+        
         # Set conversion state
         conversion_state['running'] = True
         conversion_state['progress'] = 0
         conversion_state['status'] = 'Starting conversion...'
-        conversion_state['current_book'] = book_dir.name  # Track current book
+        conversion_state['current_book'] = book_name  # Track current book
         
         try:
             # Run conversion using the modular backend in a separate thread
@@ -1033,7 +1047,8 @@ def create_convert_book_tab():
             regeneration_enabled, max_attempts, quality_threshold,
             sentiment_smoothing, smoothing_window, smoothing_method,
             mfcc_validation, output_validation, spectral_threshold, output_threshold,
-            exaggeration, cfg_weight, temperature, min_p, top_p, repetition_penalty
+            exaggeration, cfg_weight, temperature, min_p, top_p, repetition_penalty,
+            tts_batch_size, seed
         ],
         outputs=[status_display, progress_display, audio_player, audiobook_selector, m4b_file_selector]
     )
