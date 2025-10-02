@@ -13,6 +13,32 @@ TEXT_INPUT_ROOT = Path("Text_Input")
 AUDIOBOOK_ROOT = Path("Audiobook")
 VOICE_SAMPLES_DIR = Path("Voice_Samples")
 
+# Optional: Local checkpoint directory for ChatterboxTTS weights
+# If set, the engine will load from this path instead of downloading.
+# You can also override via environment variable `CHATTERBOX_CKPT_DIR`.
+CHATTERBOX_CKPT_DIR = os.environ.get("CHATTERBOX_CKPT_DIR", "/home/danno/.cache/huggingface/hub/models--ResembleAI--chatterbox/snapshots/1b475dffa71fb191cb6d5901215eb6f55635a9b6")
+
+# ============================================================================
+# ENVIRONMENT SETUP
+# ============================================================================
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
+os.environ["TRANSFORMERS_NO_PROGRESS_BAR"] = "1"
+os.environ["HF_TRANSFORMERS_NO_TQDM"] = "1"
+# Cache handling is now done by launcher scripts:
+# - launch_gradio_local.sh: Sets shared cache for development
+# - launch_gradio.sh: Uses PyTorch defaults for containers/deployment
+
+# ============================================================================
+# COLOR CODES FOR TERMINAL OUTPUT
+# ============================================================================
+RESET = "\033[0m"
+BOLD = "\033[1m"
+RED = "\033[91m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+CYAN = "\033[96m"
+
+
 # ============================================================================
 # TEXT PROCESSING SETTINGS
 # ============================================================================
@@ -22,7 +48,7 @@ MIN_CHUNK_WORDS = 4
 # ============================================================================
 # WORKER AND PERFORMANCE SETTINGS
 # ============================================================================
-MAX_WORKERS = 2
+MAX_WORKERS = 1
 TEST_MAX_WORKERS = 2                  # For experimentation
 USE_DYNAMIC_WORKERS = False           # Toggle for testing
 VRAM_SAFETY_THRESHOLD = 6.5           # GB
@@ -101,6 +127,17 @@ CHUNK_END_SILENCE_MS = 200
 SILENCE_PARAGRAPH_FALLBACK = 500      # Original paragraph logic fallback
 
 # ============================================================================
+# INLINE PAUSES (Option A)
+# ============================================================================
+# Enable inline pause markers embedded in text (e.g., "~1", "~2").
+# When enabled, the TTS wrapper will parse these markers and insert configured
+# silences at those positions without splitting the chunk.
+ENABLE_INLINE_PAUSES = True
+INLINE_PAUSE_1_MS = 150   # "~1" → 150 ms
+INLINE_PAUSE_2_MS = 700   # "~2" → 300 ms
+
+
+# ============================================================================
 # AUDIO NORMALIZATION SETTINGS
 # ============================================================================
 ENABLE_NORMALIZATION = True
@@ -117,27 +154,7 @@ ATEMPO_SPEED = 1.0
 # ============================================================================
 # M4B OUTPUT SETTINGS
 # ============================================================================
-M4B_SAMPLE_RATE = 24000  # Sample rate for M4B output (Hz) - 24kHz optimal for speech
-
-# ============================================================================
-# ENVIRONMENT SETUP
-# ============================================================================
-os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
-os.environ["TRANSFORMERS_NO_PROGRESS_BAR"] = "1"
-os.environ["HF_TRANSFORMERS_NO_TQDM"] = "1"
-# Cache handling is now done by launcher scripts:
-# - launch_gradio_local.sh: Sets shared cache for development
-# - launch_gradio.sh: Uses PyTorch defaults for containers/deployment
-
-# ============================================================================
-# COLOR CODES FOR TERMINAL OUTPUT
-# ============================================================================
-RESET = "\033[0m"
-BOLD = "\033[1m"
-RED = "\033[91m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-CYAN = "\033[96m"
+M4B_SAMPLE_RATE = 24000
 
 # ============================================================================
 # TTS MODEL PARAMETERS (DEFAULTS)
@@ -179,10 +196,10 @@ VADER_REPETITION_PENALTY_SENSITIVITY = 0.05  # Reduced from 0.1 to be more conse
 TTS_PARAM_MIN_EXAGGERATION = 0.1
 TTS_PARAM_MAX_EXAGGERATION = 0.65
 TTS_PARAM_MIN_CFG_WEIGHT = 0.15
-TTS_PARAM_MAX_CFG_WEIGHT = 0.8
+TTS_PARAM_MAX_CFG_WEIGHT = 1.0
 
 TTS_PARAM_MIN_TEMPERATURE = 0.1
-TTS_PARAM_MAX_TEMPERATURE = 2.3499999999999988
+TTS_PARAM_MAX_TEMPERATURE = 2.35
 
 TTS_PARAM_MIN_MIN_P = 0.02             # Increased from 0.0 to prevent sampling issues
 TTS_PARAM_MAX_MIN_P = 0.3              # Reduced from MAX 0.5 to prevent over-restriction
@@ -197,7 +214,7 @@ TTS_PARAM_MAX_REPETITION_PENALTY = 2.0 # Higher values too restrictive MAX 2
 TTS_PRESETS = {
     "Narration": {
         "exaggeration": 0.55,
-        "cfg_weight": 0.7,
+        "cfg_weight": 0.5,
         "temperature": 0.85,
         "min_p": 0.05,
         "top_p": 1.0,
@@ -207,6 +224,19 @@ TTS_PRESETS = {
         "smoothing_window": 3,
         "smoothing_method": "rolling",
         "seed": 12345 # Unique seed for Narration preset
+    },
+    "Expressive Mod": {
+        "exaggeration": 0.50,
+        "cfg_weight": 0.4,
+        "temperature": 0.60,
+        "min_p": 0.05,
+        "top_p": 1.0,
+        "repetition_penalty": 1.2,
+        "vader_enabled": True,
+        "sentiment_smoothing": True,
+        "smoothing_window": 3,
+        "smoothing_method": "rolling",
+        "seed": 67890 # Unique seed for Expressive preset
     },
     "Expressive": {
         "exaggeration": 0.65,
@@ -234,12 +264,31 @@ TTS_PRESETS = {
     }
 }
 
+
+# ============================================================================
+# BATCH-BINNING SETTINGS FOR VADER PARAMETER OPTIMIZATION
+# ============================================================================
+# Enable batch-binning: rounds VADER parameters (exaggeration, cfg_weight, temperature)
+# to nearest 0.05 for better microbatching when VADER is enabled
+ENABLE_BATCH_BINNING = True         # Enable automatic parameter rounding for batch optimization (NEW) - Testing actual impact
+BATCH_BIN_PRECISION = 0.05           # Rounding precision (0.05 = round to nearest 0.05)
+
+# (Removed) Process isolation + CUDA MPS settings were pruned along with the
+# performance integrator/pipeline. No replacement flags are needed.
+
+
 # ============================================================================
 # BATCH PROCESSING SETTINGS
 # ============================================================================
-BATCH_SIZE = 400
-TTS_BATCH_SIZE = 16                   # Batch size for TTS inference when VADER is disabled
-CLEANUP_INTERVAL = 500                # Deep cleanup every N chunks (reduced frequency for speed)
+# (Legacy) Batch sizing kept for GUI compatibility; consider removing after GUI update
+BATCH_SIZE = 50000
+TTS_BATCH_SIZE = 32
+CLEANUP_INTERVAL = 500000                # Deep cleanup every N chunks (reduced frequency for speed)
+
+# ============================================================================
+# SMART RELOAD SETTINGS
+# ============================================================================
+ENABLE_SMART_RELOAD = False          # Feature appears incomplete, disable by default
 
 # ============================================================================
 # QUALITY ENHANCEMENT SETTINGS (Phase 1)
@@ -273,29 +322,76 @@ REGEN_EXAGGERATION_ADJUSTMENT = 0.15 # How much to adjust exaggeration per retry
 REGEN_CFG_ADJUSTMENT = 0.1           # How much to adjust cfg_weight per retry (increased for visibility)
 
 # ============================================================================
-# PERFORMANCE OPTIMIZATION SETTINGS
+# TORCH.COMPILE OPTIMIZATION SETTINGS
 # ============================================================================
-# Voice Embedding Caching - Cache voice embeddings to avoid recomputation
-ENABLE_VOICE_EMBEDDING_CACHE = True        # Enable voice embedding caching
-VOICE_CACHE_MEMORY_LIMIT_MB = 500          # Maximum memory for voice cache (MB)
-ENABLE_ADAPTIVE_VOICE_CACHE = True         # Adapt cache based on system memory
 
-# GPU Persistence Mode - Keep GPU in compute-ready state
-ENABLE_GPU_PERSISTENCE_MODE = False         # Try to enable GPU persistence mode
-GPU_PERSISTENCE_RETRY_COUNT = 3            # Retry attempts for persistence mode
+ENABLE_TORCH_COMPILE = True                # Master enable/disable for torch.compile
 
-# CUDA Memory Pool - Advanced GPU memory management
-ENABLE_CUDA_MEMORY_POOL = False             # Enable CUDA memory pooling
-CUDA_MEMORY_POOL_FRACTION = 0.9            # Fraction of GPU memory to pool
-ENABLE_ADAPTIVE_MEMORY_POOL = True         # Adapt pool size to system
+# Component-specific compilation flags
+COMPILE_VOICE_ENCODER = False               # Compile voice encoder
+COMPILE_TTS_DECODER = False                 # Compile T3 text-to-speech decoder
+COMPILE_VOCODER = True                    # Compile S3Gen vocoder (start conservative)
+COMPILE_TEXT_PROCESSOR = True             # Compile text processing components
 
-# Producer-Consumer Pipeline - Eliminate chunk loading overhead
-ENABLE_PRODUCER_CONSUMER_PIPELINE = False   # Re-enabled with proper ETA tracking
-PIPELINE_QUEUE_SIZE_MULTIPLIER = 3         # Queue size = workers * multiplier
-PIPELINE_MAX_QUEUE_SIZE = 20               # Maximum queue size limit
-ENABLE_PIPELINE_FALLBACK = True            # Fall back to sequential if pipeline fails
+# Compilation settings
+TORCH_COMPILE_MODE = "default"             # default|reduce-overhead|max-autotune
+TORCH_COMPILE_BACKEND = "inductor"         # inductor|nvfuser|aot_eager|eager
+TORCH_COMPILE_DYNAMIC_SHAPES = False       # Enable dynamic shape support (slower compilation)
+TORCH_COMPILE_FALLBACK_TO_CPU = False       # Fall back to CPU backend if GPU compilation fails
+
+# Text chunk size bucketing for compilation optimization
+ENABLE_CHUNK_SIZE_BUCKETING = True         # Group similar chunk sizes for better compilation
+CHUNK_BUCKET_SHORT_RANGE = [50, 200]       # Character range for short chunks
+CHUNK_BUCKET_MEDIUM_RANGE = [200, 500]     # Character range for medium chunks
+CHUNK_BUCKET_LONG_RANGE = [500, 1000]      # Character range for long chunks
+
+# Cache and warmup settings
+TORCH_COMPILE_CACHE_DIR = "venv/.cache/torch_compile"  # Compilation cache directory
+ENABLE_COMPILATION_WARMUP = True           # Pre-compile models during initialization
+COMPILATION_WARMUP_SAMPLES = 3             # Number of warmup inference passes
+
+# Text chunk size bucketing for compilation optimization
+ENABLE_CHUNK_SIZE_BUCKETING = True         # Group similar chunk sizes for better compilation
+CHUNK_BUCKET_SHORT_RANGE = [50, 200]       # Character range for short chunks
+CHUNK_BUCKET_MEDIUM_RANGE = [200, 500]     # Character range for medium chunks
+CHUNK_BUCKET_LONG_RANGE = [500, 1000]      # Character range for long chunks
+
+# Cache and warmup settings
+TORCH_COMPILE_CACHE_DIR = "venv/.cache/torch_compile"  # Compilation cache directory
+ENABLE_COMPILATION_WARMUP = True           # Pre-compile models during initialization
+COMPILATION_WARMUP_SAMPLES = 3             # Number of warmup inference passes
+
+# ============================================================================
+# PROGRESS DISPLAY SETTINGS (Sep 14 Performance Optimization)
+# ============================================================================
+ENABLE_PROGRESS_DISPLAY = True          # Enable/disable chunk progress display
+# (Removed) Progress/tqdm flags unused by current terminal logger
+ENABLE_AVERAGE_ITS_DISPLAY = True       # Show average it/s in progress display
+ENABLE_DEBUG_TIMING = False             # Per-chunk timing (debug mode only)
+
+# ============================================================================
+# LOGGING SETTINGS
+# ============================================================================
+ENABLE_LOG_APPEND = False            # Set to False for overwrite mode, True for append mode
 
 # ============================================================================
 # FEATURE TOGGLES
 # ============================================================================
 shutdown_requested = False           # Global shutdown flag
+
+
+# ============================================================================
+# CUDA OPTIMIZATION FOUNDATION SETTINGS
+# ============================================================================
+
+# FP16 + TF32 Foundation (biggest performance win)
+ENABLE_FP16_PRECISION = True       # Use half-precision (FP16) for models (NEW)
+ENABLE_TF32_MATMUL = True           # Enable TF32 for matrix operations (NEW)
+ENABLE_MIXED_PRECISION = True      # Use torch.cuda.amp for automatic mixed precision (NEW)
+
+# Memory Management (prevent fragmentation on RTX 4060 Ti 8GB)
+PYTORCH_CUDA_ALLOC_CONF = "max_split_size_mb:128"  # Disable expandable_segments for allocator stability
+
+# Micro-batching (disable to run per-chunk only)
+ENABLE_MICRO_BATCHING = True
+ENABLE_VADER_MICRO_BATCHING = True    # Disable micro-batching even when VADER is enabled

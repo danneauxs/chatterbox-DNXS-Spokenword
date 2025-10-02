@@ -152,7 +152,8 @@ def generate_audiobook_from_json(json_path, voice_name, temp_setting=None):
                     i, chunk_data['text'], text_chunks_dir, audio_chunks_dir,
                     voice_path, chunk_tts_params, start_time, total_chunks,
                     punc_norm, book_name, log_run, log_path, device,
-                    model, None, all_chunks, chunk_data.get('boundary_type', 'none')
+                    model, None,
+                    boundary_type=chunk_data.get('boundary_type', 'none')
                 )
                 futures.append(future)
 

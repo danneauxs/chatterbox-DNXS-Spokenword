@@ -89,7 +89,13 @@ def log_run(message, log_path):
 # ============================================================================
 
 def log_chunk_progress(i, total_chunks, start_time, total_audio_duration=0.0):
-    """Enhanced progress logging with accurate realtime factor"""
+    """Enhanced progress logging with configurable display frequency and average it/s"""
+    from config.config import ENABLE_PROGRESS_DISPLAY, ENABLE_AVERAGE_ITS_DISPLAY
+
+    # Skip if progress display is disabled
+    if not ENABLE_PROGRESS_DISPLAY:
+        return
+
     elapsed = time.time() - start_time
     avg_time = elapsed / (i + 1)
     eta = avg_time * total_chunks
@@ -111,28 +117,93 @@ def log_chunk_progress(i, total_chunks, start_time, total_audio_duration=0.0):
         realtime_str = f"{YELLOW}Calculating...{RESET}"
         audio_str = ""
 
-    # Force immediate output with explicit flushing
-    progress_msg = (f"\n🌀 Chunk {i+1}/{total_chunks} | ⏱ Elapsed: {CYAN}{fmt(elapsed)}{RESET} | "
-                   f"ETA: {CYAN}{fmt(eta)}{RESET} | Remaining: {YELLOW}{fmt(remaining)}{RESET} | "
-                   f"Realtime: {realtime_str} | VRAM: {GREEN}{allocated:.1f}GB{RESET}{audio_str}")
+    # Average speed display
+    its_str = ""
+    if ENABLE_AVERAGE_ITS_DISPLAY and elapsed > 0:
+        # Prefer real running average of model it/s from terminal logger
+        try:
+            from modules.terminal_logger import get_running_avg_its
+            real_avg_its = get_running_avg_its()
+        except Exception:
+            real_avg_its = None
 
-    print(progress_msg)
+        if real_avg_its is not None:
+            its_str = f" | Avg: {CYAN}{real_avg_its:.1f} it/s{RESET}"
+        else:
+            # Fallback to chunk throughput with correct unit label
+            ch_per_sec = (i + 1) / elapsed
+            its_str = f" | Avg: {CYAN}{ch_per_sec:.1f} ch/s{RESET}"
+
+    # Force immediate output with explicit flushing
+    progress_msg = (f"🌀 Chunk {i+1}/{total_chunks} | ⏱ Elapsed: {CYAN}{fmt(elapsed)}{RESET} | "
+                   f"ETA: {CYAN}{fmt(eta)}{RESET} | Remaining: {YELLOW}{fmt(remaining)}{RESET} | "
+                   f"Realtime: {realtime_str} | VRAM: {GREEN}{allocated:.1f}GB{RESET}{audio_str}{its_str}")
+
+    # Throttle console progress output to every 5 chunks and avoid printing
+    # partial 'Calculating...' lines except for the very first chunk.
+    should_throttle = ((i + 1) % 5) == 0 or (i + 1) == 1 or (i + 1) == total_chunks
+    has_audio_info = total_audio_duration > 0
+    if should_throttle and (has_audio_info or (i + 1) == 1):
+        print(progress_msg)
+
+    # Add smart reload rolling average information
+    try:
+        from modules.smart_reload_manager import get_reload_manager
+        from config.config import ENABLE_SMART_RELOAD
+
+        if ENABLE_SMART_RELOAD:
+            reload_mgr = get_reload_manager()
+            stats = reload_mgr.get_statistics()
+
+            # Only show if we have meaningful data
+            if stats['baseline_performance'] and stats['current_performance']:
+                baseline = stats['baseline_performance']
+                current = stats['current_performance']
+                degradation = stats['performance_degradation_pct']
+                chunks_since_reload = stats['chunks_since_reload']
+
+                smart_reload_msg = (f"📊 Smart Reload: {current:.1f} tok/s avg, baseline: {baseline:.1f} tok/s, "
+                                  f"degradation: {degradation:.1f}%, chunks since reload: {chunks_since_reload}")
+                if ((i + 1) % 5) == 0 or (i + 1) == 1 or (i + 1) == total_chunks:
+                    print(smart_reload_msg)
+    except (ImportError, Exception):
+        # Silently ignore if smart reload is not available or has issues
+        pass
+
     sys.stdout.flush()  # Force immediate output
-    
+
     # Create clean status message for GUI (without ANSI color codes)
     realtime_display = f"{actual_realtime:.2f}x" if actual_realtime > 0 else "Calculating..."
-    clean_status = (f"Elapsed: {fmt(elapsed)} | ETA: {fmt(eta)} | Remaining: {fmt(remaining)} | "
+    # Clean status mirrors above logic (no ANSI codes)
+    if ENABLE_AVERAGE_ITS_DISPLAY and elapsed > 0:
+        try:
+            from modules.terminal_logger import get_running_avg_its
+            real_avg_its = get_running_avg_its()
+        except Exception:
+            real_avg_its = None
+        if real_avg_its is not None:
+            its_display = f" | Avg: {real_avg_its:.1f} it/s"
+        else:
+            ch_per_sec = (i + 1) / elapsed
+            its_display = f" | Avg: {ch_per_sec:.1f} ch/s"
+    else:
+        its_display = ""
+    clean_status = (f"Chunk: {i+1}/{total_chunks} | Elapsed: {fmt(elapsed)} | ETA: {fmt(eta)} | Remaining: {fmt(remaining)} | "
                    f"Realtime: {realtime_display} | VRAM: {allocated:.1f}GB" +
-                   (f" | Audio: {fmt(total_audio_duration)}" if total_audio_duration > 0 else ""))
-    
+                   (f" | Audio: {fmt(total_audio_duration)}" if total_audio_duration > 0 else "") + its_display)
+
     # Emit status to GUI if callback is available
     if hasattr(log_chunk_progress, '_status_callback') and log_chunk_progress._status_callback:
         log_chunk_progress._status_callback(clean_status)
 
     # Also log to file for debugging
     realtime_log = f"{actual_realtime:.2f}x" if actual_realtime > 0 else "N/A"
+    if ENABLE_AVERAGE_ITS_DISPLAY and elapsed > 0:
+        its_log = f"{real_avg_its:.1f} it/s" if real_avg_its is not None else f"{((i + 1)/elapsed):.1f} ch/s"
+    else:
+        its_log = "N/A"
     logging.info(f"Progress: Chunk {i+1}/{total_chunks}, Elapsed: {fmt(elapsed)}, "
-                f"ETA: {fmt(eta)}, Realtime: {realtime_log}, "
+                f"ETA: {fmt(eta)}, Realtime: {realtime_log}, Avg it/s: {its_log}, "
                 f"Audio Duration: {fmt(total_audio_duration)}, VRAM: {allocated:.1f}GB")
 
 def display_batch_progress(batch_start, batch_end, total_chunks):

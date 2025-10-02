@@ -114,12 +114,23 @@ def ensure_voice_sample_compatibility(input_path, output_dir=None):
 def run_ffmpeg(cmd):
     """Run FFmpeg command with error handling"""
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return result
     except subprocess.CalledProcessError as e:
-        logging.info(f"FFmpeg command failed: {' '.join(cmd)}")
-        logging.info(f"Error: {e}")
-        subprocess.run(cmd)
-        raise
+        logging.error(f"FFmpeg command failed: {' '.join(cmd)}")
+        logging.error(f"Exit code: {e.returncode}")
+        logging.error(f"stdout: {e.stdout}")
+        logging.error(f"stderr: {e.stderr}")
+        
+        # Common FFmpeg error solutions
+        if e.returncode == 254:
+            logging.error("FFmpeg exit code 254 - Usually indicates file I/O or format issues")
+            logging.error("Possible causes:")
+            logging.error("- Input files don't exist or are corrupted")
+            logging.error("- Output directory doesn't exist or lacks write permissions")
+            logging.error("- Concat file format issues")
+            
+        raise RuntimeError(f"FFmpeg failed with exit code {e.returncode}: {e.stderr}")
 
 # ============================================================================
 # M4B CONVERSION WITH NORMALIZATION
@@ -393,8 +404,11 @@ def create_concat_file(chunk_paths, output_path):
     """Create FFmpeg concat file for audio chunks"""
     with open(output_path, 'w') as f:
         for p in chunk_paths:
-            # Use absolute path to ensure FFmpeg can find the files
-            f.write(f"file '{str(p.resolve())}'\n")
+            # Use absolute path and escape spaces and special chars for FFmpeg concat
+            path_str = str(p.resolve())
+            # Escape spaces, single quotes, and backslashes for FFmpeg concat format
+            escaped_path = path_str.replace('\\', '\\\\').replace(' ', '\\ ').replace("'", "\\'")
+            f.write(f'file {escaped_path}\n')
 
     logging.info(f"concat.txt written with {len(chunk_paths)} chunks.")
     return output_path
@@ -413,9 +427,28 @@ def cleanup_temp_files(directory, patterns):
 # DIRECTORY MANAGEMENT
 # ============================================================================
 
+def sanitize_filename(name):
+    """Sanitize filename for cross-platform compatibility"""
+    import re
+    # Replace problematic characters with safe alternatives
+    # Parentheses, brackets, quotes, and other special chars
+    sanitized = re.sub(r'[()[\]{}\'"`<>|?*]', '_', name)
+    # Replace multiple consecutive underscores with single underscore
+    sanitized = re.sub(r'_+', '_', sanitized)
+    # Remove trailing underscores
+    sanitized = sanitized.strip('_')
+    return sanitized
+
 def setup_book_directories(book_dir):
     """Set up directory structure for book processing"""
-    basename = book_dir.name
+    original_basename = book_dir.name
+    # Sanitize the basename for filesystem compatibility
+    basename = sanitize_filename(original_basename)
+    
+    # Log if sanitization changed the name
+    if basename != original_basename:
+        logging.info(f"Sanitized directory name: '{original_basename}' -> '{basename}'")
+    
     output_root = AUDIOBOOK_ROOT / basename
     tts_dir = output_root / "TTS"
     text_chunks_dir = tts_dir / "text_chunks"
@@ -447,14 +480,56 @@ def find_book_files(book_dir):
 
 def combine_audio_chunks(chunk_paths, output_path):
     """Combine audio chunks into single file using FFmpeg"""
+    logging.info(f"Combining {len(chunk_paths)} audio chunks into {output_path}")
+    
+    # Validate input files exist
+    missing_files = []
+    for chunk_path in chunk_paths:
+        if not chunk_path.exists():
+            missing_files.append(str(chunk_path))
+    
+    if missing_files:
+        error_msg = f"Missing chunk files: {missing_files[:5]}"  # Show first 5
+        if len(missing_files) > 5:
+            error_msg += f" ... and {len(missing_files)-5} more"
+        logging.error(error_msg)
+        raise FileNotFoundError(error_msg)
+    
+    # Ensure output directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Create concat file
     concat_list_path = output_path.parent / "concat.txt"
     create_concat_file(chunk_paths, concat_list_path)
-
-    run_ffmpeg([
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-        "-i", str(concat_list_path.resolve()),
-        "-c", "copy", str(output_path.resolve())
-    ])
+    
+    # Verify concat file was created
+    if not concat_list_path.exists():
+        raise FileNotFoundError(f"Failed to create concat file: {concat_list_path}")
+    
+    logging.info(f"Created concat file: {concat_list_path}")
+    
+    try:
+        run_ffmpeg([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_list_path.resolve()),
+            "-c", "copy", str(output_path.resolve())
+        ])
+        
+        # Verify output file was created
+        if not output_path.exists():
+            raise RuntimeError(f"FFmpeg completed but output file not found: {output_path}")
+        
+        logging.info(f"Successfully combined audio chunks: {output_path}")
+        
+    except Exception as e:
+        # Log concat file contents for debugging
+        try:
+            with open(concat_list_path, 'r') as f:
+                concat_contents = f.read()
+            logging.error(f"Concat file contents:\n{concat_contents}")
+        except:
+            logging.error("Could not read concat file for debugging")
+        raise
 
     return output_path
 
@@ -515,10 +590,83 @@ def save_chunk_info(text_chunks_dir, chunks_info):
     info_path = text_chunks_dir / "chunks_info.json"
 
     import json
+    
+    # Apply batch-binning if enabled
+    if ENABLE_BATCH_BINNING:
+        chunks_info = apply_batch_binning(chunks_info)
+
     with open(info_path, 'w', encoding='utf-8') as f:
         json.dump(chunks_info, f, indent=2, ensure_ascii=False)
 
     return info_path
+
+def apply_batch_binning(chunks_info):
+    """Round VADER parameters to nearest bin for better microbatching"""
+    print(f"📦 BATCH-BINNING: Processing {len(chunks_info)} chunks with precision {BATCH_BIN_PRECISION}")
+    binned_chunks = []
+    param_changes = {'exaggeration': [], 'cfg_weight': [], 'temperature': []}
+    
+    for chunk in chunks_info:
+        # Create a copy of the chunk to avoid modifying the original
+        binned_chunk = chunk.copy()
+        
+        # Apply binning to tts_params if they exist
+        if 'tts_params' in binned_chunk and binned_chunk['tts_params']:
+            tts_params = binned_chunk['tts_params'].copy()
+            
+            # Round key VADER-influenced parameters to nearest BATCH_BIN_PRECISION
+            for param in ['exaggeration', 'cfg_weight', 'temperature']:
+                if param in tts_params:
+                    original_value = tts_params[param]
+                    # Round to nearest BATCH_BIN_PRECISION (e.g., 0.05)
+                    # Use proper rounding: divide by precision, round, multiply back
+                    steps = round(original_value / BATCH_BIN_PRECISION)
+                    binned_value = steps * BATCH_BIN_PRECISION
+                    binned_final = round(binned_value, 3)  # Keep 3 decimal places for precision
+                    
+                    # Track changes for measurement
+                    if abs(original_value - binned_final) > 0.001:  # Significant change
+                        param_changes[param].append((original_value, binned_final))
+                    
+                    tts_params[param] = binned_final
+            
+            binned_chunk['tts_params'] = tts_params
+        
+        binned_chunks.append(binned_chunk)
+    
+    # Report batch-binning effectiveness
+    total_changes = sum(len(changes) for changes in param_changes.values())
+    if total_changes > 0:
+        print(f"📦 BATCH-BINNING RESULTS:")
+        for param, changes in param_changes.items():
+            if changes:
+                unique_original = len(set(orig for orig, _ in changes))
+                unique_binned = len(set(binned for _, binned in changes))
+                print(f"   {param}: {len(changes)} chunks changed, {unique_original}→{unique_binned} unique values")
+        print(f"📦 Total parameter changes: {total_changes}")
+        
+        # Calculate batching potential
+        original_combinations = set()
+        binned_combinations = set()
+        for chunk in chunks_info:
+            if 'tts_params' in chunk and chunk['tts_params']:
+                tp = chunk['tts_params']
+                orig_combo = (tp.get('exaggeration', 0.5), tp.get('cfg_weight', 0.5), tp.get('temperature', 0.85))
+                original_combinations.add(orig_combo)
+        
+        for chunk in binned_chunks:
+            if 'tts_params' in chunk and chunk['tts_params']:
+                tp = chunk['tts_params']
+                binned_combo = (tp.get('exaggeration', 0.5), tp.get('cfg_weight', 0.5), tp.get('temperature', 0.85))
+                binned_combinations.add(binned_combo)
+        
+        print(f"📦 MICRO-BATCH IMPROVEMENT: {len(original_combinations)}→{len(binned_combinations)} parameter combinations")
+        improvement = (len(original_combinations) - len(binned_combinations)) / len(original_combinations) * 100 if original_combinations else 0
+        print(f"📦 Batch consolidation: {improvement:.1f}% reduction in unique parameter sets")
+    else:
+        print("📦 BATCH-BINNING: No parameter changes needed - values already binned")
+    
+    return binned_chunks
 
 def load_chunk_info(text_chunks_dir):
     """Load chunk information if available"""

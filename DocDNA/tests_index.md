@@ -1,0 +1,29 @@
+# Tests Index
+
+## tools/test_sequence_batching.py
+## tools/test_cuda_integration.py
+### Functions
+- test_cuda_optimizer_integration
+## tools/test_sequential_pipeline.py
+## tools/test_flash_attention.py
+### Functions
+- test_flash_attention_vs_eager
+## tools/test_compile_fix.py
+## tools/test_kv_cache_optimization.py
+### Functions
+- test_cache_memory_layout
+- test_kv_cache_preallocation
+## tools/test_batched_inference.py
+## tools/test_unified_device_mode.py
+### Functions
+- test_basic_inference
+- test_batch_inference
+## tools/test_dual_queue_pipeline.py
+## tools/test_attention_optimizations.py
+### Functions
+- test_grouped_query_attention
+- test_sdpa_attention
+## tools/test_s3gen_cpu_performance.py
+### Functions
+- test_s3gen_cpu_performance
+- test_s3gen_gpu_performance

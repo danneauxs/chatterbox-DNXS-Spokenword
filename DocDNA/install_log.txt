@@ -1,0 +1,6 @@
+Detected environment versions:
+- python: 3.12.3
+- gradio: 5.33.0
+- PyQt5: unknown
+- qtpy: not installed
+- click: 8.2.1

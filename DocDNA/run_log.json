@@ -1,0 +1,141 @@
+[
+  {
+    "step": "env_versions",
+    "data": {
+      "python": "3.12.3",
+      "gradio": "5.33.0",
+      "PyQt5": "unknown",
+      "qtpy": "not installed",
+      "click": "8.2.1"
+    }
+  },
+  {
+    "step": "build_ai_report",
+    "status": "start"
+  },
+  {
+    "step": "build_ai_report",
+    "status": "end",
+    "result": {
+      "cmd": [
+        "/home/danno/MyApps/chatterbox (copy)/venv/bin/python",
+        "/home/danno/MyApps/DocDNA_Tool/build_ai_report.py",
+        "/home/danno/MyApps/chatterbox (copy)",
+        "--outdir",
+        "DocDNA"
+      ],
+      "rc": 0,
+      "stdout": "==> Building project brief\n==> Gradio target detected: gradio_main_interface:create_main_interface\n==> Qt target not found. Skipping.\n==> Click target not found. Skipping.\n==> Summarizing UI coverage\n==> Scanning non-Python resources\n==> Extracting Gradio component/handler map\n==> Scanning Qt connections\n==> Building cross-references and call graph\n==> Indexing tests\n==> Indexing JS/Node (package.json)\n==> Building runtime graph\n\nDone. See docs/ for outputs.\n",
+      "stderr": "",
+      "elapsed_s": 19.796
+    }
+  },
+  {
+    "step": "detect",
+    "gradio": {
+      "kind": "gradio",
+      "dotted": "gradio_main_interface:create_main_interface",
+      "reason": "gradio_main_interface factory"
+    },
+    "qt": {
+      "kind": "qt",
+      "dotted": "chatterbox_gui:ChatterboxMainWindow",
+      "reason": "class ChatterboxMainWindow derives from QMainWindow"
+    },
+    "click": null,
+    "argparse": null,
+    "web": null
+  },
+  {
+    "step": "dump_gradio",
+    "target": "gradio_main_interface:create_main_interface",
+    "fmt": "md",
+    "result": {
+      "cmd": [
+        "/home/danno/MyApps/chatterbox (copy)/venv/bin/python",
+        "/home/danno/MyApps/DocDNA_Tool/dump_gradio_tree.py",
+        "gradio_main_interface:create_main_interface",
+        "--format",
+        "md",
+        "--out",
+        "/home/danno/MyApps/chatterbox (copy)/DocDNA/gradio_tree.md"
+      ],
+      "rc": 0,
+      "stdout": "\u2705 Audio combine functionality available\n\u2705 Config module loaded successfully\n\u2705 Chunk tools functionality available\n\u2705 JSON generation functionality available\nWrote /home/danno/MyApps/chatterbox (copy)/DocDNA/gradio_tree.md\n",
+      "stderr": "/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/perth/perth_net/__init__.py:1: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.\n  from pkg_resources import resource_filename\n/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/gradio/utils.py:1028: UserWarning: Expected 24 arguments for function <function create_convert_book_tab.<locals>.start_conversion at 0x71faf1b568e0>, received 22.\n  warnings.warn(\n/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/gradio/utils.py:1032: UserWarning: Expected at least 24 arguments for function <function create_convert_book_tab.<locals>.start_conversion at 0x71faf1b568e0>, received 22.\n  warnings.warn(\n/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/gradio/components/dropdown.py:230: UserWarning: The value passed into gr.Dropdown() is not in the list of choices. Please update the list of choices to include: rolling or set allow_custom_value=True.\n  warnings.warn(\n",
+      "elapsed_s": 4.577
+    }
+  },
+  {
+    "step": "dump_gradio",
+    "target": "gradio_main_interface:create_main_interface",
+    "fmt": "json",
+    "result": {
+      "cmd": [
+        "/home/danno/MyApps/chatterbox (copy)/venv/bin/python",
+        "/home/danno/MyApps/DocDNA_Tool/dump_gradio_tree.py",
+        "gradio_main_interface:create_main_interface",
+        "--format",
+        "json",
+        "--out",
+        "/home/danno/MyApps/chatterbox (copy)/DocDNA/gradio_tree.json"
+      ],
+      "rc": 0,
+      "stdout": "\u2705 Audio combine functionality available\n\u2705 Config module loaded successfully\n\u2705 Chunk tools functionality available\n\u2705 JSON generation functionality available\nWrote /home/danno/MyApps/chatterbox (copy)/DocDNA/gradio_tree.json\n",
+      "stderr": "/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/perth/perth_net/__init__.py:1: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.\n  from pkg_resources import resource_filename\n/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/gradio/utils.py:1028: UserWarning: Expected 24 arguments for function <function create_convert_book_tab.<locals>.start_conversion at 0x7b06929068e0>, received 22.\n  warnings.warn(\n/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/gradio/utils.py:1032: UserWarning: Expected at least 24 arguments for function <function create_convert_book_tab.<locals>.start_conversion at 0x7b06929068e0>, received 22.\n  warnings.warn(\n/home/danno/MyApps/chatterbox (copy)/venv/lib/python3.12/site-packages/gradio/components/dropdown.py:230: UserWarning: The value passed into gr.Dropdown() is not in the list of choices. Please update the list of choices to include: rolling or set allow_custom_value=True.\n  warnings.warn(\n",
+      "elapsed_s": 4.543
+    }
+  },
+  {
+    "step": "dump_qt",
+    "target": "chatterbox_gui:ChatterboxMainWindow",
+    "fmt": "md",
+    "result": {
+      "cmd": [
+        "/home/danno/MyApps/chatterbox (copy)/venv/bin/python",
+        "/home/danno/MyApps/DocDNA_Tool/dump_qt_tree.py",
+        "chatterbox_gui:ChatterboxMainWindow",
+        "--format",
+        "md",
+        "--out",
+        "/home/danno/MyApps/chatterbox (copy)/DocDNA/qt_tree.md"
+      ],
+      "rc": 0,
+      "stdout": "Warning: Missing dependencies for voice analysis: No module named 'voice_analyzer'\nInstall with: pip install -r voice_analyzer/requirements.txt\npygame 2.6.1 (SDL 2.28.4, Python 3.12.3)\nHello from the pygame community. https://www.pygame.org/contribute.html\nWrote /home/danno/MyApps/chatterbox (copy)/DocDNA/qt_tree.md\n",
+      "stderr": "",
+      "elapsed_s": 3.359
+    }
+  },
+  {
+    "step": "dump_qt",
+    "target": "chatterbox_gui:ChatterboxMainWindow",
+    "fmt": "json",
+    "result": {
+      "cmd": [
+        "/home/danno/MyApps/chatterbox (copy)/venv/bin/python",
+        "/home/danno/MyApps/DocDNA_Tool/dump_qt_tree.py",
+        "chatterbox_gui:ChatterboxMainWindow",
+        "--format",
+        "json",
+        "--out",
+        "/home/danno/MyApps/chatterbox (copy)/DocDNA/qt_tree.json"
+      ],
+      "rc": 0,
+      "stdout": "Warning: Missing dependencies for voice analysis: No module named 'voice_analyzer'\nInstall with: pip install -r voice_analyzer/requirements.txt\npygame 2.6.1 (SDL 2.28.4, Python 3.12.3)\nHello from the pygame community. https://www.pygame.org/contribute.html\nWrote /home/danno/MyApps/chatterbox (copy)/DocDNA/qt_tree.json\n",
+      "stderr": "",
+      "elapsed_s": 3.372
+    }
+  },
+  {
+    "step": "dump_click",
+    "skipped": true
+  },
+  {
+    "step": "dump_argparse",
+    "skipped": true
+  },
+  {
+    "step": "dump_web",
+    "skipped": true
+  }
+]

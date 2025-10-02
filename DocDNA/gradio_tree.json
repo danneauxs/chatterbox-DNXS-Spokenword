@@ -1,0 +1,42 @@
+{
+  "app_type": "Blocks",
+  "title": "ChatterboxTTS - Complete Interface",
+  "theme": "<gradio.themes.soft.Soft object at 0x7b0810e5fcb0>",
+  "components": [
+    {
+      "kind": "Soft",
+      "label": null,
+      "elem_id": null,
+      "visible": null
+    },
+    {
+      "kind": "BlocksConfig",
+      "label": null,
+      "elem_id": null,
+      "visible": null
+    },
+    {
+      "kind": "Queue",
+      "label": null,
+      "elem_id": null,
+      "visible": null
+    },
+    {
+      "kind": "StateHolder",
+      "label": null,
+      "elem_id": null,
+      "visible": null
+    },
+    {
+      "kind": "App",
+      "label": null,
+      "elem_id": null,
+      "visible": null
+    }
+  ],
+  "dependencies": [],
+  "meta": {
+    "mode": "blocks",
+    "analytics_enabled": false
+  }
+}

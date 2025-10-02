@@ -822,3 +822,185 @@ def test_chunking(test_text=None, max_words=20, min_words=4):
         print()
 
     return chunks
+
+# ============================================================================
+# TEXT CHUNK SIZE BUCKETING FOR TORCH.COMPILE OPTIMIZATION
+# ============================================================================
+
+def get_chunk_bucket(chunk_text):
+    """
+    Determine which bucket a text chunk belongs to for torch.compile optimization
+    
+    Args:
+        chunk_text: Text chunk string
+        
+    Returns:
+        str: "short", "medium", or "long" bucket identifier
+    """
+    from config.config import (
+        ENABLE_CHUNK_SIZE_BUCKETING, CHUNK_BUCKET_SHORT_RANGE,
+        CHUNK_BUCKET_MEDIUM_RANGE, CHUNK_BUCKET_LONG_RANGE
+    )
+    
+    if not ENABLE_CHUNK_SIZE_BUCKETING:
+        return "default"
+    
+    char_count = len(chunk_text)
+    
+    if CHUNK_BUCKET_SHORT_RANGE[0] <= char_count <= CHUNK_BUCKET_SHORT_RANGE[1]:
+        return "short"
+    elif CHUNK_BUCKET_MEDIUM_RANGE[0] <= char_count <= CHUNK_BUCKET_MEDIUM_RANGE[1]:
+        return "medium"
+    elif CHUNK_BUCKET_LONG_RANGE[0] <= char_count <= CHUNK_BUCKET_LONG_RANGE[1]:
+        return "long"
+    else:
+        # Very short or very long chunks go to nearest bucket
+        if char_count < CHUNK_BUCKET_SHORT_RANGE[0]:
+            return "short"
+        else:
+            return "long"
+
+def analyze_chunk_distribution(chunks):
+    """
+    Analyze the distribution of chunks across size buckets
+    
+    Args:
+        chunks: List of chunk texts or (chunk_text, is_paragraph_end) tuples
+        
+    Returns:
+        dict: Distribution statistics for torch.compile optimization planning
+    """
+    from config.config import ENABLE_CHUNK_SIZE_BUCKETING
+    
+    if not ENABLE_CHUNK_SIZE_BUCKETING:
+        return {"bucketing_disabled": True}
+    
+    distribution = {"short": 0, "medium": 0, "long": 0}
+    char_counts = []
+    
+    for chunk in chunks:
+        # Handle both string chunks and (text, is_paragraph) tuples
+        chunk_text = chunk[0] if isinstance(chunk, tuple) else chunk
+        
+        bucket = get_chunk_bucket(chunk_text)
+        distribution[bucket] += 1
+        char_counts.append(len(chunk_text))
+    
+    total_chunks = len(chunks)
+    
+    # Calculate statistics
+    stats = {
+        "total_chunks": total_chunks,
+        "distribution": distribution,
+        "percentages": {
+            bucket: (count / total_chunks * 100) if total_chunks > 0 else 0
+            for bucket, count in distribution.items()
+        },
+        "char_stats": {
+            "min": min(char_counts) if char_counts else 0,
+            "max": max(char_counts) if char_counts else 0,
+            "avg": sum(char_counts) / len(char_counts) if char_counts else 0
+        },
+        "optimization_potential": calculate_optimization_potential(distribution, total_chunks)
+    }
+    
+    return stats
+
+def calculate_optimization_potential(distribution, total_chunks):
+    """
+    Calculate potential optimization benefits from chunk bucketing
+    
+    Args:
+        distribution: Bucket distribution counts
+        total_chunks: Total number of chunks
+        
+    Returns:
+        dict: Optimization potential analysis
+    """
+    if total_chunks == 0:
+        return {"potential": "none", "reason": "no_chunks"}
+    
+    # Calculate dominant bucket
+    dominant_bucket = max(distribution, key=distribution.get)
+    dominant_percentage = distribution[dominant_bucket] / total_chunks * 100
+    
+    # Determine optimization potential
+    if dominant_percentage >= 70:
+        potential = "high"
+        reason = f"{dominant_bucket} chunks dominate ({dominant_percentage:.1f}%)"
+    elif dominant_percentage >= 50:
+        potential = "medium" 
+        reason = f"{dominant_bucket} chunks prevalent ({dominant_percentage:.1f}%)"
+    else:
+        potential = "low"
+        reason = f"even distribution across buckets"
+    
+    return {
+        "potential": potential,
+        "reason": reason,
+        "dominant_bucket": dominant_bucket,
+        "dominant_percentage": dominant_percentage
+    }
+
+def create_bucketed_chunk_groups(chunks):
+    """
+    Group chunks by size bucket for batch processing optimization
+    
+    Args:
+        chunks: List of chunks (text or tuples)
+        
+    Returns:
+        dict: Chunks grouped by bucket for optimized processing
+    """
+    from config.config import ENABLE_CHUNK_SIZE_BUCKETING
+    
+    if not ENABLE_CHUNK_SIZE_BUCKETING:
+        return {"default": chunks}
+    
+    bucketed_groups = {"short": [], "medium": [], "long": []}
+    
+    for i, chunk in enumerate(chunks):
+        # Handle both string chunks and (text, is_paragraph) tuples
+        chunk_text = chunk[0] if isinstance(chunk, tuple) else chunk
+        bucket = get_chunk_bucket(chunk_text)
+        
+        # Store chunk with its original index for maintaining order
+        bucketed_groups[bucket].append((i, chunk))
+    
+    # Filter out empty buckets
+    return {bucket: group for bucket, group in bucketed_groups.items() if group}
+
+def log_chunk_bucketing_stats(chunks, logger=None):
+    """
+    Log chunk bucketing statistics for performance monitoring
+    
+    Args:
+        chunks: List of chunks to analyze
+        logger: Logger instance (optional, uses print if None)
+    """
+    from config.config import ENABLE_CHUNK_SIZE_BUCKETING
+    
+    if not ENABLE_CHUNK_SIZE_BUCKETING:
+        return
+    
+    stats = analyze_chunk_distribution(chunks)
+    log_func = logger.info if logger else print
+    
+    log_func("📊 CHUNK SIZE BUCKETING ANALYSIS")
+    log_func(f"   Total chunks: {stats['total_chunks']}")
+    log_func(f"   Distribution:")
+    for bucket, count in stats['distribution'].items():
+        percentage = stats['percentages'][bucket]
+        log_func(f"     {bucket.capitalize()}: {count} chunks ({percentage:.1f}%)")
+    
+    log_func(f"   Character range: {stats['char_stats']['min']}-{stats['char_stats']['max']} (avg: {stats['char_stats']['avg']:.0f})")
+    
+    opt = stats['optimization_potential']
+    log_func(f"   Optimization potential: {opt['potential'].upper()} - {opt['reason']}")
+    
+    if opt['potential'] == 'high':
+        log_func("   🚀 High bucketing efficiency expected - significant torch.compile benefits")
+    elif opt['potential'] == 'medium':
+        log_func("   ⚡ Moderate bucketing efficiency - good torch.compile benefits")
+    else:
+        log_func("   📝 Low bucketing efficiency - minimal torch.compile shape benefits")

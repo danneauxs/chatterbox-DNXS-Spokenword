@@ -35,7 +35,6 @@ Voice_Samples/*
 # Text Input Books (users add their own)
 Text_Input/
 !Text_Input/README.md
-CLAUDE.md
 
 # Temporary and Log Files
 *.log

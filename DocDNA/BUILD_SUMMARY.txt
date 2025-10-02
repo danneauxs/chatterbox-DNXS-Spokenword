@@ -1,0 +1,10 @@
+DNA Map Build Summary
+======================
+
+Detected:
+- Gradio: found → gradio_main_interface:create_main_interface
+- Qt: found → chatterbox_gui:ChatterboxMainWindow
+- Click: not found / skipped
+
+- Argparse: not found / skipped
+- Web: not found / skipped

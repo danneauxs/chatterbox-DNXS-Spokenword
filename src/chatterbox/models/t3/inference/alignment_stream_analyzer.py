@@ -39,21 +39,20 @@ class AlignmentStreamAnalyzer:
         # self.queue = queue
         self.text_tokens_slice = (i, j) = text_tokens_slice
         self.eos_idx = eos_idx
-        self.alignment = torch.zeros(0, j-i)
+        # Keep alignment buffer on the same device as the transformer to avoid device syncs/transfers
+        try:
+            self._device = next(tfmr.parameters()).device
+        except StopIteration:
+            self._device = torch.device("cpu")
+        self.alignment = torch.zeros(0, j - i, device=self._device)
         # self.alignment_bin = torch.zeros(0, j-i)
         self.curr_frame_pos = 0
         self.text_position = 0
-
-        self.started = False
-        self.started_at = None
-
-        self.complete = False
-        self.completed_at = None
+        self.last_aligned_attn = None
 
         # Using `output_attentions=True` is incompatible with optimized attention kernels, so
         # using it for all layers slows things down too much. We can apply it to just one layer
         # by intercepting the kwargs and adding a forward hook (credit: jrm)
-        self.last_aligned_attn = None
         self._add_attention_spy(tfmr, alignment_layer_idx)
 
     def _add_attention_spy(self, tfmr, alignment_layer_idx):
@@ -71,32 +70,24 @@ class AlignmentStreamAnalyzer:
             - When `output_attentions=True`, `LlamaSdpaAttention.forward` calls `LlamaAttention.forward`.
             - `attn_output` has shape [B, H, T0, T0] for the 0th entry, and [B, H, 1, T0+i] for the rest i-th.
             """
-            step_attention = output[1].cpu() # (B, 16, N, N)
-            self.last_aligned_attn = step_attention[0].mean(0) # (N, N)
+            # Detach without forcing CPU sync; keep on-device to avoid per‑token host transfers
+            step_attention = output[1].detach()  # (B, 16, N, N)
+            self.last_aligned_attn = step_attention[0].mean(0)  # (N, N)
 
         target_layer = tfmr.layers[alignment_layer_idx].self_attn
         hook_handle = target_layer.register_forward_hook(attention_forward_hook)
+        self._hook_handle = hook_handle
 
         # Backup original forward
-        from types import MethodType
+        original_forward = target_layer.forward
+        self._original_forward = original_forward
+        self._target_layer = target_layer
 
-        def patch_alignment_layer(tfmr, alignment_layer_idx=12):
-            # ⛔ Old (broken) logic – causes recursion:
-            # target_layer = tfmr.layers[alignment_layer_idx].self_attn
-            # def patched_forward(self, *args, **kwargs):
-            #     kwargs['output_attentions'] = True
-            #     return original_forward(*args, **kwargs)
-            # target_layer.forward = MethodType(patched_forward, target_layer)
+        def patched_forward(self, *args, **kwargs):
+            kwargs['output_attentions'] = True
+            return original_forward(*args, **kwargs)
 
-            # ✅ Corrected logic to avoid recursion:
-            target_layer = tfmr.layers[alignment_layer_idx].self_attn
-            original_forward = target_layer.forward  # Save the real unpatched forward
-
-            def patched_forward(self, *args, **kwargs):
-                kwargs['output_attentions'] = True
-                return original_forward(*args, **kwargs)
-
-            target_layer.forward = MethodType(patched_forward, target_layer)
+        target_layer.forward = MethodType(patched_forward, target_layer)
 
 
     def step(self, logits):
@@ -108,10 +99,10 @@ class AlignmentStreamAnalyzer:
         i, j = self.text_tokens_slice
         if self.curr_frame_pos == 0:
             # first chunk has conditioning info, text tokens, and BOS token
-            A_chunk = aligned_attn[j:, i:j].clone().cpu() # (T, S)
+            A_chunk = aligned_attn[j:, i:j].clone()  # (T, S)
         else:
             # subsequent chunks have 1 frame due to KV-caching
-            A_chunk = aligned_attn[:, i:j].clone().cpu() # (1, S)
+            A_chunk = aligned_attn[:, i:j].clone()  # (1, S)
 
         # TODO: monotonic masking; could have issue b/c spaces are often skipped.
         A_chunk[:, self.curr_frame_pos + 1:] = 0
@@ -165,3 +156,29 @@ class AlignmentStreamAnalyzer:
 
         self.curr_frame_pos += 1
         return logits
+
+    def close(self):
+        """
+        Remove hooks and restore original forward to prevent accumulation across generations.
+        """
+        # Best-effort cleanup; ignore errors to avoid interfering with generation teardown
+        try:
+            if hasattr(self, "_hook_handle") and self._hook_handle is not None:
+                self._hook_handle.remove()
+        except Exception:
+            pass
+        try:
+            if (
+                hasattr(self, "_target_layer")
+                and hasattr(self, "_original_forward")
+                and self._target_layer is not None
+                and self._original_forward is not None
+            ):
+                self._target_layer.forward = self._original_forward
+        except Exception:
+            pass
+        # Null references
+        self._hook_handle = None
+        self._original_forward = None
+        self._target_layer = None
+        self.last_aligned_attn = None

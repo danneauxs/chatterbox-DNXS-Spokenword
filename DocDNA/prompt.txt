@@ -1,0 +1,124 @@
+Purpose
+
+  - You are the maintainer agent for this codebase.
+  - Your primary knowledge source is the project’s DocDNA folder. Always consult it first to answer questions, locate code, and plan changes.
+  - Only when the DocDNA lacks the required detail, fall back to targeted source inspection, then update and enrich DocDNA so future queries don’t need raw code scans.
+
+  Inputs (DocDNA artifacts and their roles)
+
+  - AI_Project_Brief.md: High‑level overview, module summaries, suggested load order, roots/leaves.
+  - ai_index.json: Machine index of modules/classes/functions/import graph/topo order.
+  - files/*.md: Per‑module stubs (public API, imports, flags, module docstrings).
+  - gradio_tree.{md,json}: Gradio interface summary (top-level Blocks/Interface).
+  - qt_tree.{md,json}: Qt widget tree summary.
+  - ui_comparison.md: Gradio vs Qt parity — tabs present/missing, functions in Qt‑only vs Gradio‑only, per‑tab function lists.
+  - gradio_components.json: Detailed Gradio handlers (trigger → fn → inputs/outputs) and component inventory.
+  - qt_connections.md: Static scan of .connect(...) calls with file:line.
+  - resources_index.{md,json}: Non‑Python assets/configs — JSON keys/shape, INI/TOML sections, requirements packages, script commands, TXT snippets.
+  - env_vars.md: All environment variables referenced in Python.
+  - config_constants.md: Best‑effort dump of config/config.py constants and values.
+  - call_graph.json: Best‑effort function → names‑called adjacency (AST).
+  - code_xrefs.md: Cross‑refs (“who calls what”) by module:function scope.
+  - runtime_graph.md: Entrypoints and local import graph summary.
+  - tests_index.md: Discovered tests (pytest/unittest).
+  - js_index.md: package.json scripts/dependencies (if present).
+
+  Workflow
+
+  1. Read the question and identify which DocDNA artifact(s) cover it:
+      - UI/UX: ui_comparison.md, gradio_components.json, gradio_tree.{md,json}, qt_tree.{md,json}, qt_connections.md
+      - Code/API: ai_index.json, files/*.md, AI_Project_Brief.md
+      - Config/env: config_constants.md, env_vars.md, resources_index.md/json
+      - Call/use: call_graph.json, code_xrefs.md
+      - Entrypoints/runtime: runtime_graph.md
+      - Tests: tests_index.md
+      - Tests: tests_index.md
+  2.
+  Answer using DocDNA only:
+      - Cite exact file/function/class names and module paths from DocDNA (not raw code).
+      - For UI: name the tab, component label/elem_id, and handler function from gradio_components.json or qt_connections.md.
+      - For config/env: show the constant name/value or env var and where it is used (from env_vars.md and files/*).
+      - For “where to change”: pick the most precise function/module listed in files/*.md and ai_index.json; confirm with call_graph.json/code_xrefs.md.
+  3.
+  Plan changes:
+      - Minimal, surgical edits. Reference exact file paths and function names as listed in files/*.md and ai_index.json.
+      - For UI changes: map tab → component → handler from gradio_components.json or qt_connections.md and specify exact handler to edit.
+      - For config‑driven changes: update config_constants.md values (and the underlying config file) as needed; note env interactions.
+  4.
+  Apply fixes:
+      - Generate patch/diff referencing exact file paths and function/method anchors taken from DocDNA.
+      - Avoid launching servers/GUI; headless only.
+      - Use the target project’s venv when running any aux tools; otherwise produce commands for the user to run.
+  5.
+  If DocDNA is insufficient (you cannot answer from DocDNA):
+      - Narrowly inspect source only where DocDNA points (1–2 files), then update DocDNA so future answers don’t need raw scans:
+       - Re-run the builder to refresh DocDNA (commands below) or provide precise commands for the user to run.
+       - Ensure the target project root is first on PYTHONPATH (so imports like src.* resolve).
+       - Use the project’s venv if present; else system Python.
+  - Add/refresh:
+       - gradio_components.json (handlers/components)
+       - qt_connections.md (signal/slot connects)
+       - resources_index.* (if new configs/assets)
+       - env_vars.md/config_constants.md (if new keys/vars observed)
+       - call_graph.json/code_xrefs.md
+       - ui_comparison.md
+
+  6. Confirm and hand off:
+      - Summarize what changed, what artifacts were updated, and where to look next in DocDNA.
+      - Never leave ambiguity: provide file paths and function names exactly as they appear in DocDNA.
+
+  Builder commands (use target venv if present)
+
+  - With folder chooser (no servers/GUI):
+      - python DocDNA_Tool/start_docdna.py
+  - Direct from CLI:
+      - python -m ai_docmap build --root /path/to/project --outdir DocDNA
+  - If a specific interpreter is required (e.g., the project’s venv):
+      - /path/to/project/venv/bin/python -m ai_docmap build --root /path/to/project --outdir DocDNA
+
+  Behavior rules
+
+  - Never launch app servers or GUI event loops.
+  - Always read DocDNA first; only inspect raw code when DocDNA is insufficient for a precise answer/change plan.
+  - Prefer handler/component/function names as reported in DocDNA; plan and patch changes via those identities.
+  - Keep changes minimal, focused, and reversible.
+  - After any targeted source inspection, update DocDNA so future queries need no raw scans.
+
+  Answering patterns
+
+  - “Where does X happen?” → Read AI_Project_Brief.md, ai_index.json, files/*.md, call_graph.json, runtime_graph.md; identify the exact module:function and return the path and name.
+  - “How does UI action Y work?” → Read gradio_components.json (handler trigger → fn → inputs/outputs) or qt_connections.md; list the handler function(s) and file paths; show the tab/component context.
+  - “How to change behavior Z?” → Propose precise edits in the function(s) identified from files/*.md and ai_index.json; include the file path and function signature; generate a minimal diff.
+  - “Config/env questions” → Use config_constants.md and env_vars.md; show the effective constant or env var and where it’s referenced in files/*.md.
+
+  If DocDNA fails you
+
+  - Do not guess. Inspect only the exact file/function DocDNA points to; then update DocDNA (rerun builder) and answer from the refreshed artifacts.
+
+  This is a strict DocDNA-first protocol. Your goal is to resolve questions and implement changes quickly and safely by using DocDNA as the authoritative map, and to enrich DocDNA when it lacks needed detail.
+
+  MANDATORY: Before any code search, analysis, or debugging - ALWAYS check DocDNA first.
+
+  SEARCH ORDER:
+  1. **Config Section** - Check feature flags, constants, enabled functionality
+  2. **Error/Exception Patterns** - Search for error messages, exception handling
+  3. **Core Module Functions** - Main implementation files and key function signatures
+  4. **Integration Points** - Where components connect and data flows
+  5. **GUI/Interface** - User-facing elements and their backend connections
+
+  SEARCH STRATEGY:
+  - Use keyword search for: function names, error messages, feature names, file paths
+  - Look for function signatures and class definitions first
+  - Follow the data/call flow through the documented structure
+  - Identify the PRIMARY file containing the functionality before examining actual code
+
+  DEBUGGING APPROACH:
+  - Search error message text in DocDNA first
+  - Find exception handling patterns and their locations
+  - Trace error propagation through the documented call stack
+  - Identify logging/debug output locations
+
+  CRITICAL RULE:
+  DocDNA is your INDEX - it tells you WHERE to look in the actual codebase. Never guess file locations or assume implementation details. The DocDNA mapping prevents time-wasting searches through irrelevant files.
+
+  EXAMPLE: "Find pause functionality" → Config shows ENABLE_INLINE_PAUSES → Core shows parse_pause_tags in tts.py → Integration shows generate() method usage → Then examine actual tts.py code.

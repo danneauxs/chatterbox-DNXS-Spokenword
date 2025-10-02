@@ -20,7 +20,7 @@ project_root = Path(__file__).parent
 sys.path.append(str(project_root))
 
 from config.config import *
-from modules.tts_engine import load_optimized_model, process_one_chunk, prewarm_model_with_voice
+from modules.tts_engine import load_optimized_model, process_one_chunk
 from modules.file_manager import setup_book_directories, list_voice_samples, ensure_voice_sample_compatibility
 from wrapper.chunk_loader import load_chunks
 from chatterbox.tts import punc_norm
@@ -87,12 +87,9 @@ def main():
     # 5. Load Model
     model = load_optimized_model(device)
     
-    # 6. Pre-warm model to eliminate first chunk quality variations
-    print(f"🔥 Pre-warming model with voice sample: {Path(voice_path).name}")
-    from modules.tts_engine import prewarm_model_with_voice
-    compatible_voice = ensure_voice_sample_compatibility(voice_path)
-    # Use default TTS params for pre-warming since we don't have user params here
-    model = prewarm_model_with_voice(model, compatible_voice, None)
+    # 6. Prepare voice conditionals (THIS WAS MISSING!)
+    print(f"🎤 Preparing voice conditionals with: {Path(voice_path).name}")
+    model.prepare_conditionals(voice_path)
 
     # 7. Process Chunks
     output_root, tts_dir, text_chunks_dir, audio_chunks_dir = setup_book_directories(Path(TEXT_INPUT_ROOT) / book_name)
@@ -123,7 +120,7 @@ def main():
                 i, chunk_data['text'], text_chunks_dir, audio_chunks_dir,
                 voice_path, chunk_tts_params, start_time, total_chunks,
                 punc_norm, book_name, log_run, log_path, device,
-                model, None, all_chunks, chunk_data['boundary_type']
+                model, None, chunk_data['is_paragraph_end'], all_chunks, chunk_data['boundary_type']
             )
             futures.append(future)
 

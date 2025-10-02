@@ -57,7 +57,7 @@ from modules.audio_processor import (
 )
 from modules.tts_engine import (
     monitor_gpu_activity, optimize_memory_usage, load_optimized_model,
-    patch_alignment_layer, process_one_chunk, process_book_folder
+    patch_alignment_layer, process_one_chunk, process_book_folder, get_best_available_device
 )
 from modules.file_manager import (
     list_voice_samples, ensure_voice_sample_compatibility, chunk_sort_key,
@@ -66,7 +66,7 @@ from modules.file_manager import (
 )
 from modules.progress_tracker import log_chunk_progress, log_console, log_run, setup_logging
 from modules.resume_handler import process_book_folder_resume, resume_book_from_chunk
-from modules.batch_processor import pipeline_book_processing
+
 from tools.combine_only import run_combine_only_mode
 
 # ============================================================================
@@ -250,7 +250,51 @@ def prompt_tts_params():
 # PIPELINE AND UTILITY FUNCTIONS
 # ============================================================================
 
-# pipeline_book_processing() now imported from modules.batch_processor
+def pipeline_book_processing(books_to_process):
+    """
+    Processes a queue of books, calling the main processing function for each.
+    """
+    completed_books = []
+    device = get_best_available_device()
+    print(f"🚀 Starting processing on device: {device}")
+
+    for i, book_info in enumerate(books_to_process, 1):
+        book_dir = book_info['book_dir']
+        voice_path = book_info['voice_path']
+        tts_params = book_info['tts_params']
+        
+        print(f"\n=====================================================================")
+        print(f"▶️ PROCESSING BOOK {i}/{len(books_to_process)}: {book_dir.name}")
+        print(f"=====================================================================")
+        
+        try:
+            # Extract ASR setting from the tts_params collected from the user
+            asr_config = tts_params.get('asr_config', {})
+            enable_asr = asr_config.get('enabled', False)
+
+            # Call the main processing function from tts_engine
+            final_m4b_path, _, _ = process_book_folder(
+                book_dir=book_dir,
+                voice_path=voice_path,
+                tts_params=tts_params,
+                device=device,
+                enable_asr=enable_asr,
+                config_params={'asr_config': asr_config} # Pass the detailed asr_config
+            )
+            
+            if final_m4b_path and final_m4b_path.exists():
+                print(f"✅ SUCCESS: Completed {book_dir.name}")
+                completed_books.append(book_dir.name)
+            else:
+                print(f"⚠️ WARNING: Processing finished for {book_dir.name}, but the final M4B file was not found.")
+
+        except Exception as e:
+            print(f"❌ FATAL ERROR processing {book_dir.name}: {e}")
+            import traceback
+            traceback.print_exc()
+            print(f"Moving to next book in queue...")
+
+    return completed_books
 
 # run_combine_only_mode() now imported from tools.combine_only
 

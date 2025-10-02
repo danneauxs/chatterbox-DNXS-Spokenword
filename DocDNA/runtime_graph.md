@@ -1,0 +1,130 @@
+# Runtime Graph (best-effort)
+
+## Entrypoints
+- Voice_Samples.mel
+- chatterbox_gui
+- gradio_app
+- gradio_launcher
+- gradio_main_interface
+- gradio_tabs.tab1_convert_book
+- gradio_tabs.tab2_configuration
+- gradio_tabs.tab4_combine_audio
+- gradio_tabs.tab5_prepare_text
+- gradio_tabs.tab7_chunk_tools
+- gradio_tabs.tab8_json_generate
+- interface
+- launch
+- main_launcher
+- modules.asr_manager
+- modules.batch_processor
+- modules.dual_model_optimizer
+- modules.gui_json_generator
+- modules.system_detector
+- modules.t3_minimal_export
+- modules.t3_standalone_export
+- scripts.make_backup
+- start
+- tools.analyze_attention_implementation
+- tools.analyze_book_json_for_batching
+- tools.audio_emotion_scanner
+- tools.combine_only
+- tools.config_audit
+- tools.cuda_kernel_profiler
+- tools.emotion_extractor
+- tools.emotional_audio_enhancer
+- tools.exporters.t3_fx_export
+- tools.feature_run_logger
+- tools.feature_spider
+- tools.generate_from_json
+- tools.gui_static_map
+- tools.gui_walker
+- tools.headless_performance_test
+- tools.measure_token_memory
+- tools.ort_gpu_diagnose
+- tools.path_checker
+- tools.quick_batching_test
+- tools.run_tts_once
+- tools.runtime_summarize
+- tools.safe_archiver
+- tools.spider_ci
+- tools.spider_run
+- tools.test_attention_optimizations
+- tools.test_batched_inference
+- tools.test_compile_fix
+- tools.test_cuda_integration
+- tools.test_dual_queue_pipeline
+- tools.test_flash_attention
+- tools.test_kv_cache_optimization
+- tools.test_s3gen_cpu_performance
+- tools.test_sequence_batching
+- tools.test_sequential_pipeline
+- tools.test_unified_device_mode
+- tools.trace_pipeline_flow
+- tools.trace_t3_inference
+- tools.tts_trt_benchmark
+- tools.xtts_finetune_extractor
+- utils.generate_from_json
+
+## Import Graph (local)
+- chatterbox_gui → config.config, interface, modules.file_manager, modules.gui_json_generator, modules.progress_tracker, modules.resume_handler, modules.simple_token_logger, modules.system_detector, modules.terminal_logger, modules.text_processor, modules.token_analyzer, modules.tts_engine, modules.voice_detector, tools.combine_only, utils.generate_from_json, wrapper.chunk_loader, wrapper.chunk_player, wrapper.chunk_revisions, wrapper.chunk_search, wrapper.chunk_synthesizer, wrapper.chunk_tool
+- gradio_app → modules.audio_processor, modules.file_manager, modules.text_processor, src.chatterbox.tts
+- gradio_launcher → gradio_main_interface
+- gradio_main_interface → gradio_tabs.tab1_convert_book, gradio_tabs.tab2_configuration, gradio_tabs.tab4_combine_audio, gradio_tabs.tab5_prepare_text, gradio_tabs.tab6_settings, gradio_tabs.tab7_chunk_tools, gradio_tabs.tab8_json_generate
+- gradio_tabs.tab1_convert_book → config.config, modules.file_manager, modules.path_validator, modules.system_detector, modules.tts_engine
+- gradio_tabs.tab2_configuration → config.config
+- gradio_tabs.tab4_combine_audio → modules.audio_processor, modules.file_manager, tools.combine_only
+- gradio_tabs.tab5_prepare_text → config.config, modules.path_validator, modules.tts_engine
+- gradio_tabs.tab6_settings → modules.text_processor
+- gradio_tabs.tab7_chunk_tools → config.config, modules.voice_detector, wrapper.chunk_editor, wrapper.chunk_loader, wrapper.chunk_player, wrapper.chunk_revisions, wrapper.chunk_search, wrapper.chunk_synthesizer
+- gradio_tabs.tab8_json_generate → config.config, modules.file_manager, modules.gui_json_generator
+- interface → config.config, modules.audio_processor, modules.file_manager, modules.progress_tracker, modules.resume_handler, modules.system_detector, modules.text_processor, modules.tts_engine, src.chatterbox.tts, tools.combine_only
+- main_launcher → config.config, interface, modules.resume_handler, modules.text_processor, modules.tts_engine, tools.combine_only, utils.generate_from_json, wrapper.chunk_loader, wrapper.chunk_tool
+- modules.asr_manager → config.config
+- modules.audio_processor → config.config, modules.asr_manager
+- modules.batch_processor → modules.tts_engine
+- modules.dual_model_optimizer → config.config, modules.real_tts_optimizer, src.chatterbox.tts
+- modules.dual_t3_engine → config.config, src.chatterbox.tts
+- modules.dual_tts_engine → config.config, src.chatterbox.tts
+- modules.file_manager → config.config
+- modules.gui_json_generator → config.config, modules.file_manager, modules.progress_tracker, modules.tts_engine, src.chatterbox.tts, tools.combine_only, wrapper.chunk_loader
+- modules.path_validator → config.config, modules.file_manager
+- modules.progress_tracker → config.config, modules.terminal_logger, modules.tts_engine
+- modules.real_tts_optimizer → config.config
+- modules.resume_handler → config.config, modules.asr_manager, modules.audio_processor, modules.file_manager, modules.progress_tracker, modules.text_processor, modules.tts_engine, src.chatterbox.tts, wrapper.chunk_loader
+- modules.system_detector → config.config
+- modules.t3_minimal_export → modules.t3_standalone_export, src.chatterbox.models.t3.modules.cond_enc
+- modules.t3_standalone_export → src.chatterbox.models.t3.modules.cond_enc, src.chatterbox.models.t3.t3, src.chatterbox.models.tokenizers.tokenizer
+- modules.terminal_logger → config.config
+- modules.text_processor → config.config
+- modules.token_analyzer → config.config
+- modules.tts_engine → config.config, modules.asr_manager, modules.audio_processor, modules.file_manager, modules.progress_tracker, modules.real_tts_optimizer, modules.terminal_logger, modules.text_processor, modules.voice_detector, src.chatterbox.tts, wrapper.chunk_loader
+- modules.voice_detector → config.config, modules.file_manager
+- src.chatterbox.tts → config.config
+- start → main_launcher, modules.text_processor, wrapper.chunk_tool
+- tools.analyze_attention_implementation → modules.tts_engine
+- tools.combine_only → config.config, modules.audio_processor, modules.file_manager, modules.progress_tracker
+- tools.cuda_kernel_profiler → config.config, modules.file_manager, modules.tts_engine
+- tools.exporters.t3_fx_export → config.config, src.chatterbox.models.t3.llama_configs
+- tools.generate_from_json → config.config, modules.file_manager, modules.progress_tracker, modules.tts_engine, wrapper.chunk_loader
+- tools.headless_performance_test → config.config, modules.file_manager, modules.terminal_logger, modules.tts_engine, src.chatterbox.tts
+- tools.measure_token_memory → modules.file_manager, modules.tts_engine, src.chatterbox.tts
+- tools.path_checker → config.config, modules.path_validator
+- tools.quick_batching_test → modules.tts_engine
+- tools.run_tts_once → modules.tts_engine
+- tools.test_attention_optimizations → modules.tts_engine
+- tools.test_batched_inference → modules.tts_engine
+- tools.test_compile_fix → modules.file_manager, modules.tts_engine
+- tools.test_cuda_integration → modules.cuda_optimizer, modules.file_manager, modules.real_tts_optimizer, modules.tts_engine
+- tools.test_dual_queue_pipeline → modules.text_processor, modules.tts_engine, src.chatterbox.tts
+- tools.test_flash_attention → modules.tts_engine
+- tools.test_kv_cache_optimization → modules.tts_engine
+- tools.test_s3gen_cpu_performance → modules.file_manager, modules.tts_engine, src.chatterbox.tts
+- tools.test_sequence_batching → modules.file_manager, modules.sequence_batch_processor, modules.tts_engine
+- tools.test_sequential_pipeline → modules.text_processor, modules.tts_engine, src.chatterbox.tts
+- tools.test_unified_device_mode → config.config, modules.file_manager, modules.tts_engine
+- tools.trace_pipeline_flow → modules.tts_engine, src.chatterbox.tts
+- tools.trace_t3_inference → modules.tts_engine, src.chatterbox.models.t3.inference.alignment_stream_analyzer, src.chatterbox.models.t3.inference.t3_hf_backend, src.chatterbox.models.t3.t3
+- utils.generate_from_json → config.config, modules.file_manager, modules.progress_tracker, modules.tts_engine, wrapper.chunk_loader
+- wrapper.chunk_revisions → config.config
+- wrapper.chunk_synthesizer → config.config, modules.audio_processor, modules.file_manager, modules.tts_engine, modules.voice_detector
+- wrapper.chunk_tool → config.config, wrapper.chunk_editor, wrapper.chunk_loader, wrapper.chunk_player, wrapper.chunk_revisions, wrapper.chunk_search, wrapper.chunk_synthesizer

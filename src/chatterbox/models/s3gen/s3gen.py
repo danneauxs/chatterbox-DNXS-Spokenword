@@ -261,7 +261,9 @@ class S3Token2Wav(S3Token2Mel):
 
         if not self.training:
             # NOTE: ad-hoc method to reduce "spillover" from the reference clip.
-            output_wavs[:, :len(self.trim_fade)] *= self.trim_fade
+            # Fix: Handle case where generated audio is shorter than trim_fade
+            fade_len = min(output_wavs.size(1), len(self.trim_fade))
+            output_wavs[:, :fade_len] *= self.trim_fade[:fade_len]
 
         return output_wavs
 
@@ -300,6 +302,8 @@ class S3Token2Wav(S3Token2Mel):
         output_wavs, output_sources = self.hift_inference(output_mels, cache_source)
 
         # NOTE: ad-hoc method to reduce "spillover" from the reference clip.
-        output_wavs[:, :len(self.trim_fade)] *= self.trim_fade
+        # Fix: Handle case where generated audio is shorter than trim_fade
+        fade_len = min(output_wavs.size(1), len(self.trim_fade))
+        output_wavs[:, :fade_len] *= self.trim_fade[:fade_len]
 
         return output_wavs, output_sources
